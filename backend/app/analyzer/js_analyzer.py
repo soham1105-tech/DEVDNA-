@@ -513,6 +513,8 @@ class _Extractor:
         value = self.field(d, "value")
         if name_node is None:
             return
+        if value is None:  # e.g. `let x;` — no initializer to resolve
+            return
         line = self.line(d)
         # destructuring: const { Pool } = require('pg') / const { X = 1 } = process.env
         if name_node.type == "object_pattern" and value is not None:

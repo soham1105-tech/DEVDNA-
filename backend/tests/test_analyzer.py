@@ -100,3 +100,16 @@ def test_flask_requests_secrets_and_parse_errors(tmp_path: Path):
     # the secret value never appears in any evidence snippet
     assert r["secret_hits"] and all("abcd1234efgh5678" not in h["snippet"] for h in r["secret_hits"])
     assert "abcd1234efgh5678" not in str(r["edges"])
+
+
+def test_function_local_reassignment_does_not_recurse(tmp_path: Path):
+    """A local `x = x.replace(...)` must not register a module instance and
+    recurse forever during name resolution (RecursionError guard)."""
+    (tmp_path / "util.py").write_text(
+        "def scrub(msg: str) -> str:\n"
+        "    msg = msg.replace('a', 'b')\n"
+        "    other = other.strip() if other else msg\n"
+        "    return msg\n",
+        encoding="utf-8")
+    r = analyse_project(tmp_path)
+    assert "func:util.scrub" in _ids(r, "function")
