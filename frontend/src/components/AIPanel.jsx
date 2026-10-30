@@ -79,7 +79,7 @@ export default function AIPanel({ title, subtitle, purpose, fetcher, render, ini
           )}
         </AnimatePresence>
         {!data && !state.loading && !state.error && configured !== false && (
-          <p className="text-sm text-ink-300">Nothing generated yet. You will see exactly which evidence is sent before anything leaves the server.</p>
+          <p className="text-sm text-ink-300">Nothing generated yet. Architecture, prediction, and chat requests offer a preview of the redacted evidence before sending. Multimodal audits and dynamic-scenario synthesis use an explicit checkbox confirmation instead.</p>
         )}
       </div>
     </Card>

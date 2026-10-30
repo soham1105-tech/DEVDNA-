@@ -7,10 +7,12 @@ import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
 import { stagger } from '../animations/variants'
 import AIPanel from '../components/AIPanel'
 import { ArchitectureResult } from '../components/AIRenderers'
+import AstScoreCard from '../components/AstScoreCard'
 import ProjectGate from '../components/ProjectGate'
 import { Badge, Button, Card, CardHeader, ErrorState, PageHeader, SeverityBadge, SkeletonCards, Stat } from '../components/ui'
 import Welcome, { WORKFLOW } from '../components/Welcome'
 import { useAnalysisFlow } from '../hooks/useAnalysisFlow'
+import { useAstAnalysis } from '../hooks/useAstAnalysis'
 import { useAsync } from '../hooks/useAsync'
 import { useProject } from '../hooks/useProject'
 import { api } from '../services/api'
@@ -45,7 +47,9 @@ export default function Overview() {
 
 function Dashboard({ project }) {
   const { data, error, loading, reload } = useAsync(() => api.analytics(project.id), [project.id, project.latest_run_id])
+  const drift = useAsync(() => api.drift(project.id), [project.id, project.latest_run_id])
   const latestAI = useAsync(() => api.latestArchitecture(project.id), [project.id, project.latest_run_id])
+  const ast = useAstAnalysis(project.ast_repository)
   const flow = useAnalysisFlow()
 
   if (loading && !data) return <SkeletonCards count={8} />
@@ -77,7 +81,7 @@ function Dashboard({ project }) {
       <PageHeader
         eyebrow="Overview"
         title={project.name}
-        subtitle={`${project.source_type === 'sample' ? 'Bundled demo' : project.source_type === 'upload' ? 'Uploaded ZIP' : 'Local folder'} · analysed ${timeAgo(project.latest_run?.finished_at)} · ${a.frameworks.join(', ') || 'no frameworks detected'}`}
+        subtitle={`${project.source_type === 'sample' ? 'Bundled demo' : project.source_type === 'upload' ? 'Uploaded ZIP' : project.source_type === 'github' ? 'GitHub repository' : 'Local folder'} · analysed ${timeAgo(project.latest_run?.finished_at)} · ${a.frameworks.join(', ') || 'no frameworks detected'}`}
         actions={
           <>
             <Badge className={project.trusted ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200' : 'border-orange-400/25 bg-orange-400/10 text-orange-200'}>
@@ -104,69 +108,104 @@ function Dashboard({ project }) {
           </ol>
         </Card>
 
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
           <Stat label="Components" value={totalComponents} hint={`${a.component_counts.function || 0} functions · ${a.component_counts.class || 0} classes`} icon={Boxes} />
           <Stat label="Relationships" value={totalEdges} hint={`${a.edge_classification.confirmed || 0} confirmed · ${a.edge_classification.inferred || 0} inferred`} icon={GitBranch} accent="cyan" />
           <Stat label="Routes" value={cov.routes ?? 0} hint={`${cov.routes_with_tests ?? 0} covered by tests`} icon={Route} accent="cyan" />
           <Stat label="Open findings" value={a.findings.open} hint={`${a.findings.by_severity.high || 0} high · ${a.findings.by_severity.medium || 0} medium`} icon={ShieldAlert} accent="rose" />
           <Stat label="Experiments" value={a.experiments.total} hint={`${a.predictions.total} predictions`} icon={FlaskConical} accent="emerald" />
+          <AstScoreCard ast={ast} repository={project.ast_repository} />
         </div>
 
-        <Card className="border-violet-500/20 bg-gradient-to-r from-violet-500/[0.07] via-cyan-500/[0.04] to-ink-900/60 p-4">
-          <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-violet-300">
-                <Sparkles className="h-3.5 w-3.5" /> 3-Minute Hackathon Demo Scenarios
+        <Card>
+          <CardHeader title="Analysis drift" subtitle="Changes since the previous completed run" icon={GitBranch} />
+          {drift.loading && !drift.data ? (
+            <div className="space-y-2 p-4"><SkeletonCards count={2} /></div>
+          ) : drift.error ? (
+            <div className="p-4"><ErrorState error={drift.error} onRetry={drift.reload} /></div>
+          ) : !drift.data?.has_comparison ? (
+            <p className="p-4 text-sm text-ink-300">A second completed analysis is needed to show drift.</p>
+          ) : (
+            <div className="grid gap-4 p-4 md:grid-cols-3">
+              <div>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-emerald-200">Routes added ({drift.data.routes_added.length})</h3>
+                {drift.data.routes_added.length ? <ul className="space-y-1 text-xs text-ink-200">{drift.data.routes_added.map((route) => <li key={route.id} className="font-mono">{route.name}</li>)}</ul> : <p className="text-xs text-ink-400">None</p>}
               </div>
-              <p className="mt-0.5 text-xs text-ink-300 sm:text-sm">
-                Click any scenario to predict its blast radius, inspect cited evidence, and prove it with real pytest execution:
-              </p>
+              <div>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-rose-200">Routes removed ({drift.data.routes_removed.length})</h3>
+                {drift.data.routes_removed.length ? <ul className="space-y-1 text-xs text-ink-200">{drift.data.routes_removed.map((route) => <li key={route.id} className="font-mono">{route.name}</li>)}</ul> : <p className="text-xs text-ink-400">None</p>}
+              </div>
+              <div>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-violet-200">Blast radius grew</h3>
+                {drift.data.blast_radius_growth.length ? <ul className="space-y-1 text-xs text-ink-200">{drift.data.blast_radius_growth.slice(0, 5).map((component) => <li key={component.id}>{component.name} <span className="text-ink-400">+{component.growth} dependents</span></li>)}</ul> : <p className="text-xs text-ink-400">No components grew.</p>}
+              </div>
             </div>
-            <Link to="/lab" className="shrink-0 text-xs font-medium text-cyan-300 hover:underline">
+          )}
+        </Card>
+
+        {project.source_type === 'sample' ? (
+          <Card className="border-violet-500/20 bg-gradient-to-r from-violet-500/[0.07] via-cyan-500/[0.04] to-ink-900/60 p-4">
+            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+              <div>
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-violet-300">
+                  <Sparkles className="h-3.5 w-3.5" /> 3-Minute Hackathon Demo Scenarios
+                </div>
+                <p className="mt-0.5 text-xs text-ink-300 sm:text-sm">
+                  Click any scenario to predict its blast radius, inspect cited evidence, and prove it with real pytest execution:
+                </p>
+              </div>
+              <Link to="/lab" className="shrink-0 text-xs font-medium text-cyan-300 hover:underline">
+                Open What-If Lab &rarr;
+              </Link>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <Link
+                to="/lab?scenario=db_unavailable"
+                className="group rounded-xl border border-white/[0.06] bg-ink-900/70 p-3 transition-colors hover:border-violet-400/40 hover:bg-ink-800/80"
+              >
+                <div className="flex items-center justify-between text-xs font-medium text-ink-100">
+                  <span>💥 Database Outage</span>
+                  <span className="text-[10px] text-emerald-400">100% Confirmed</span>
+                </div>
+                <p className="mt-1 text-xs text-ink-400">
+                  Simulates SQLite crash. Cascades through startup into 6/6 routes and 8 failing tests.
+                </p>
+              </Link>
+
+              <Link
+                to="/lab?scenario=external_api_unavailable"
+                className="group rounded-xl border border-white/[0.06] bg-ink-900/70 p-3 transition-colors hover:border-cyan-400/40 hover:bg-ink-800/80"
+              >
+                <div className="flex items-center justify-between text-xs font-medium text-ink-100">
+                  <span>🌐 Shipping API Outage</span>
+                  <span className="text-[10px] text-amber-300">Partially Confirmed</span>
+                </div>
+                <p className="mt-1 text-xs text-ink-400">
+                  Injects HTTP ConnectError. Discovers FastAPI 422 validation short-circuit before handler.
+                </p>
+              </Link>
+
+              <Link
+                to="/lab?scenario=worker_unavailable"
+                className="group rounded-xl border border-white/[0.06] bg-ink-900/70 p-3 transition-colors hover:border-emerald-400/40 hover:bg-ink-800/80"
+              >
+                <div className="flex items-center justify-between text-xs font-medium text-ink-100">
+                  <span>⚙️ Worker Unavailable</span>
+                  <span className="text-[10px] text-violet-300">Handled Error</span>
+                </div>
+                <p className="mt-1 text-xs text-ink-400">
+                  Thread worker never starts. Reveals try/except handler and reports uncertainty.
+                </p>
+              </Link>
+            </div>
+          </Card>
+        ) : (
+          <Card className="p-4">
+            <Link to="/lab" className="text-xs font-medium text-cyan-300 hover:underline">
               Open What-If Lab &rarr;
             </Link>
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <Link
-              to="/lab?scenario=db_unavailable"
-              className="group rounded-xl border border-white/[0.06] bg-ink-900/70 p-3 transition-colors hover:border-violet-400/40 hover:bg-ink-800/80"
-            >
-              <div className="flex items-center justify-between text-xs font-medium text-ink-100">
-                <span>💥 Database Outage</span>
-                <span className="text-[10px] text-emerald-400">100% Confirmed</span>
-              </div>
-              <p className="mt-1 text-xs text-ink-400">
-                Simulates SQLite crash. Cascades through startup into 6/6 routes and 8 failing tests.
-              </p>
-            </Link>
-
-            <Link
-              to="/lab?scenario=external_api_unavailable"
-              className="group rounded-xl border border-white/[0.06] bg-ink-900/70 p-3 transition-colors hover:border-cyan-400/40 hover:bg-ink-800/80"
-            >
-              <div className="flex items-center justify-between text-xs font-medium text-ink-100">
-                <span>🌐 Shipping API Outage</span>
-                <span className="text-[10px] text-amber-300">Partially Confirmed</span>
-              </div>
-              <p className="mt-1 text-xs text-ink-400">
-                Injects HTTP ConnectError. Discovers FastAPI 422 validation short-circuit before handler.
-              </p>
-            </Link>
-
-            <Link
-              to="/lab?scenario=worker_unavailable"
-              className="group rounded-xl border border-white/[0.06] bg-ink-900/70 p-3 transition-colors hover:border-emerald-400/40 hover:bg-ink-800/80"
-            >
-              <div className="flex items-center justify-between text-xs font-medium text-ink-100">
-                <span>⚙️ Worker Unavailable</span>
-                <span className="text-[10px] text-violet-300">Handled Error</span>
-              </div>
-              <p className="mt-1 text-xs text-ink-400">
-                Thread worker never starts. Reveals try/except handler and reports uncertainty.
-              </p>
-            </Link>
-          </div>
-        </Card>
+          </Card>
+        )}
 
         <div className="grid gap-4 lg:grid-cols-3">
           <Card className="lg:col-span-2">

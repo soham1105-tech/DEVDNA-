@@ -4,6 +4,7 @@ import { GemmaProvider } from './hooks/useGemma'
 import { ProjectProvider } from './hooks/useProject'
 import { SettingsProvider, useSettings } from './hooks/useSettings'
 import { StatusProvider } from './hooks/useStatus'
+import ErrorBoundary from './components/ErrorBoundary'
 import AppLayout from './layouts/AppLayout'
 import Architecture from './pages/Architecture'
 import ExperimentDetail from './pages/ExperimentDetail'
@@ -30,20 +31,22 @@ export default function App() {
           <ProjectProvider>
             <GemmaProvider>
               <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                <Routes>
-                  <Route element={<AppLayout />}>
-                    <Route index element={<Overview />} />
-                    <Route path="architecture" element={<Architecture />} />
-                    <Route path="prediction" element={<Prediction />} />
-                    <Route path="lab" element={<WhatIfLab />} />
-                    <Route path="findings" element={<Findings />} />
-                    <Route path="experiments" element={<Experiments />} />
-                    <Route path="experiments/:id" element={<ExperimentDetail />} />
-                    <Route path="reports" element={<Reports />} />
-                    <Route path="settings" element={<Settings />} />
-                    <Route path="*" element={<NotFound />} />
-                  </Route>
-                </Routes>
+                <ErrorBoundary>
+                  <Routes>
+                    <Route element={<AppLayout />}>
+                      <Route index element={<Overview />} />
+                      <Route path="architecture" element={<Architecture />} />
+                      <Route path="prediction" element={<Prediction />} />
+                      <Route path="lab" element={<WhatIfLab />} />
+                      <Route path="findings" element={<Findings />} />
+                      <Route path="experiments" element={<Experiments />} />
+                      <Route path="experiments/:id" element={<ExperimentDetail />} />
+                      <Route path="reports" element={<Reports />} />
+                      <Route path="settings" element={<Settings />} />
+                      <Route path="*" element={<NotFound />} />
+                    </Route>
+                  </Routes>
+                </ErrorBoundary>
               </BrowserRouter>
             </GemmaProvider>
           </ProjectProvider>

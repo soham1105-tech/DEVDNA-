@@ -1,11 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import ConsentModal from '../components/ConsentModal'
 import ImpactView from '../components/ImpactView'
+import MultimodalAuditModal from '../components/MultimodalAuditModal'
 import { StatusBadge } from '../components/ui'
 import { SettingsProvider } from '../hooks/useSettings'
 import { ThemeToggle } from '../layouts/AppLayout'
+
+afterEach(() => vi.unstubAllGlobals())
 
 const preview = {
   model: 'gemma-4-26b-a4b-it',
@@ -92,3 +95,21 @@ describe('ThemeToggle', () => {
   })
 })
 
+describe('MultimodalAuditModal', () => {
+  it('requires explicit consent before enabling the audit button', () => {
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:diagram'),
+      revokeObjectURL: vi.fn(),
+    })
+    const { unmount } = render(<MultimodalAuditModal open onClose={() => {}} projectId="p1" />)
+    const auditButton = screen.getByRole('button', { name: /analyze diagram with gemma 4/i })
+    fireEvent.change(document.body.querySelector('input[type="file"]'), {
+      target: { files: [new File(['image'], 'diagram.png', { type: 'image/png' })] },
+    })
+    expect(auditButton).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /i understand this diagram and notes will be sent to gemma/i }))
+    expect(auditButton).toBeEnabled()
+    unmount()
+  })
+})

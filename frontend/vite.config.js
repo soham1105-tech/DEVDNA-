@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 // The dev server proxies /api to the FastAPI backend, so the browser never needs the backend URL.
 export default defineConfig({
+  envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   plugins: [react(), tailwindcss()],
   build: {
     rollupOptions: {

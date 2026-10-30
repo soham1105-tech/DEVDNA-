@@ -129,6 +129,13 @@ class NeuroSymbolicFailurePrediction(BaseModel):
     evidence_used: list[str] = Field(default_factory=list)
 
 
+class DiscrepancyAnalysis(BaseModel):
+    explanation: str
+    generated_test: str
+    suggested_patch: str
+    evidence_used: list[str] = Field(default_factory=list)
+
+
 SCHEMAS = {
     "architecture": ArchitectureExplanation,
     "failure_analysis": FailureAnalysis,
@@ -137,6 +144,7 @@ SCHEMAS = {
     "multimodal_audit": MultimodalAuditResult,
     "dynamic_scenario": DynamicScenarioSpec,
     "neuro_symbolic_prediction": NeuroSymbolicFailurePrediction,
+    "discrepancy": DiscrepancyAnalysis,
 }
 T = TypeVar("T", bound=BaseModel)
 

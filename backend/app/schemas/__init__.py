@@ -1,6 +1,7 @@
 """Pydantic request models (validated by FastAPI)."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -11,6 +12,13 @@ ScenarioName = str
 class LocalProjectIn(BaseModel):
     path: str = Field(min_length=1, max_length=1000)
     name: str | None = Field(default=None, max_length=200)
+    github_url: str | None = Field(default=None, max_length=500)
+    github_branch: str | None = Field(default=None, max_length=255)
+
+
+class GitHubProjectIn(BaseModel):
+    github_url: str = Field(min_length=1, max_length=500)
+    github_branch: str = Field(default="main", min_length=1, max_length=255)
 
 
 class PredictionIn(BaseModel):
@@ -51,3 +59,9 @@ class ExperimentIn(BaseModel):
 
 class FindingPatch(BaseModel):
     review_status: Literal["open", "acknowledged", "resolved", "false_positive"]
+
+
+class FindingSuppressionIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)
+    owner: str = Field(min_length=1, max_length=500)
+    expires_at: datetime

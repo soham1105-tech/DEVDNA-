@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import tomllib
+import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -37,7 +40,7 @@ def docker_available() -> bool:
     if not shutil.which("docker"):
         return False
     try:
-        r = subprocess.run(["docker", "image", "inspect", SANDBOX_IMAGE], capture_output=True, timeout=10)
+        r = subprocess.run(["docker", "info"], capture_output=True, timeout=10)
         return r.returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
@@ -106,6 +109,118 @@ def _posix_limits():  # pragma: no cover - not available on Windows
     resource.setrlimit(resource.RLIMIT_NPROC, (256, 256))
 
 
+def _dependency_requirements(project_dir: Path) -> str:
+    """Return installable dependencies from the project's most specific manifest."""
+    project_dir = project_dir.resolve()
+    requirements = project_dir / "requirements.txt"
+    if requirements.is_file():
+        visited: set[Path] = set()
+
+        def read_requirements(path: Path) -> list[str]:
+            path = path.resolve(strict=True)
+            if project_dir not in path.parents and path != project_dir:
+                raise ValueError(f"Dependency include escapes the project directory: {path.name}")
+            if path in visited:
+                raise ValueError(f"Circular dependency include in {path.name}")
+            visited.add(path)
+            lines = []
+            for line in path.read_text(encoding="utf-8").splitlines():
+                match = re.match(r"^\s*(?:-r|--requirement(?:=|\s+))\s*(.+?)\s*$", line)
+                if match:
+                    include = match.group(1).strip().strip("\"'")
+                    lines.extend(read_requirements(path.parent / include))
+                elif line.strip() and not re.fullmatch(r"(?:-e|--editable(?:=|\s+))\s*\.\/?(?:\[[^\]]+\])?", line.strip()):
+                    lines.append(line)
+            visited.remove(path)
+            return lines
+
+        return "\n".join(read_requirements(requirements))
+
+    uv_lock = project_dir / "uv.lock"
+    poetry_lock = project_dir / "poetry.lock"
+    pipfile_lock = project_dir / "Pipfile.lock"
+    pyproject = project_dir / "pyproject.toml"
+    if uv_lock.is_file():
+        lock = tomllib.loads(uv_lock.read_text(encoding="utf-8"))
+        entries = []
+        for package in lock.get("package", []):
+            source = package.get("source", {})
+            if source and source.get("registry") not in (None, "https://pypi.org/simple"):
+                continue
+            name, version = package.get("name"), package.get("version")
+            if name and version:
+                markers = package.get("resolution-markers", [])
+                marker = f"; {markers[0]}" if len(markers) == 1 else ""
+                entries.append(f"{name}=={version}{marker}")
+        return "\n".join(entries)
+    if poetry_lock.is_file():
+        lock = tomllib.loads(poetry_lock.read_text(encoding="utf-8"))
+        entries = []
+        for package in lock.get("package", []):
+            source = package.get("source", {})
+            if source and source.get("type") not in ("legacy", "file"):
+                continue
+            name, version = package.get("name"), package.get("version")
+            if name and version:
+                marker = f"; {package['marker']}" if package.get("marker") else ""
+                entries.append(f"{name}=={version}{marker}")
+        return "\n".join(entries)
+    if pipfile_lock.is_file():
+        lock = json.loads(pipfile_lock.read_text(encoding="utf-8"))
+        entries = []
+        for section in ("default", "develop"):
+            for name, package in lock.get(section, {}).items():
+                version = package.get("version")
+                if version:
+                    marker = f"; {package['markers']}" if package.get("markers") else ""
+                    entries.append(f"{name}{version}{marker}")
+        return "\n".join(entries)
+    if pyproject.is_file():
+        config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        project = config.get("project", {})
+        dependencies = list(project.get("dependencies", []))
+        poetry = config.get("tool", {}).get("poetry", {}).get("dependencies", {})
+        for name, value in poetry.items():
+            if name.lower() == "python":
+                continue
+            if isinstance(value, str):
+                spec = value
+            elif isinstance(value, dict):
+                version = value.get("version", "")
+                spec = version
+                extras = value.get("extras", [])
+                if extras:
+                    name += f"[{','.join(extras)}]"
+                marker = value.get("markers")
+                if marker:
+                    spec += f"; {marker}"
+                if value.get("optional") and not extras:
+                    continue
+            else:
+                continue
+            spec = spec.replace("^", ">=").replace("~", ">=")
+            dependencies.append(f"{name}{spec}" if spec.startswith(("<", ">", "=", "!", "~")) else f"{name}=={spec}" if spec else name)
+        return "\n".join(dependencies)
+    return ""
+
+
+def _build_sandbox_image(project_dir: Path, workdir: Path) -> str:
+    """Build a throwaway sandbox image with the repository's declared dependencies."""
+    context = workdir / "image-context"
+    context.mkdir()
+    (context / "requirements.txt").write_text(_dependency_requirements(project_dir), encoding="utf-8")
+    image = f"devdna-sandbox:{uuid.uuid4().hex[:12]}"
+    dockerfile = Path(__file__).resolve().parents[2] / "sandbox" / "Dockerfile"
+    proc = subprocess.run(
+        ["docker", "build", "--tag", image, "--file", str(dockerfile), str(context)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=settings.experiment_timeout_s,
+    )
+    if proc.returncode:
+        raise RuntimeError(f"Could not build experiment sandbox image: {(proc.stderr or proc.stdout)[-2000:]}")
+    return image
+
+
 def parse_junit(path: Path) -> dict[str, dict]:
     results: dict[str, dict] = {}
     if not path.exists():
@@ -131,19 +246,23 @@ def parse_junit(path: Path) -> dict[str, dict]:
     return results
 
 
-def _run_pytest(project_dir: Path, workdir: Path, fault: dict | None, label: str, mode: str) -> dict:
+def _run_pytest(project_dir: Path, workdir: Path, fault: dict | None, label: str, mode: str,
+                sandbox_image: str | None = None) -> dict:
     xml = workdir / f"{label}.xml"
     report = workdir / f"{label}-fault.json"
     args = ["-m", "pytest", "-q", "-p", "devdna_faults", "-p", "no:cacheprovider", f"--junitxml={xml}",
             "-o", "junit_family=xunit2", "--tb=short", "-rfE", "--color=no"]
     env = _scrubbed_env(workdir, project_dir, fault, report)
     started = time.monotonic()
+    container_name = f"devdna-exp-{uuid.uuid4().hex[:12]}"
     if mode == "docker":  # pragma: no cover - requires Docker
-        cmd = ["docker", "run", "--rm", "--network", "none", "--memory", "512m", "--cpus", "1", "--pids-limit", "128",
+        image = sandbox_image or SANDBOX_IMAGE
+        workdir.chmod(0o777)
+        cmd = ["docker", "run", "--rm", "--name", container_name, "--network", "none", "--memory", "512m", "--cpus", "1", "--pids-limit", "128",
                "--read-only", "--tmpfs", "/tmp:rw,size=64m", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                "-v", f"{project_dir}:/src:ro", "-v", f"{HARNESS_DIR}:/harness:ro", "-v", f"{workdir}:/out:rw",
                "-e", "PYTHONPATH=/harness:/src", "-e", f"DEVDNA_FAULT={env['DEVDNA_FAULT']}",
-               "-e", f"DEVDNA_FAULT_REPORT=/out/{report.name}", "-w", "/src", SANDBOX_IMAGE,
+               "-e", f"DEVDNA_FAULT_REPORT=/out/{report.name}", "-w", "/src", image,
                "python", *[a.replace(str(xml), f"/out/{xml.name}") for a in args]]
         kwargs = {}
     else:
@@ -160,6 +279,13 @@ def _run_pytest(project_dir: Path, workdir: Path, fault: dict | None, label: str
     except subprocess.TimeoutExpired as exc:
         timed_out, code = True, None
         out = ((exc.stdout or b"").decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else (exc.stdout or ""))
+        if mode == "docker":
+            cleanup = subprocess.run(
+                ["docker", "rm", "--force", container_name],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
+            )
+            if cleanup.returncode and "no such container" not in (cleanup.stderr or "").lower():
+                out += f"\nDocker container cleanup failed: {(cleanup.stderr or cleanup.stdout)[-1000:]}"
     duration = round(time.monotonic() - started, 2)
     out = redact(out.replace(str(workdir), "<sandbox>"))[0]
     fault_state = {}
@@ -178,16 +304,27 @@ def _run_pytest(project_dir: Path, workdir: Path, fault: dict | None, label: str
 
 
 def execute(project_dir: Path, fault: dict, mode: str) -> dict:
-    """Run the project's tests twice (baseline, then with the fault) in a disposable copy."""
+    """Run baseline and faulted tests in separate disposable project copies."""
     workdir = Path(tempfile.mkdtemp(prefix="devdna-exp-"))
+    image = None
     try:
-        sandbox_project = workdir / "project"
-        shutil.copytree(project_dir, sandbox_project, ignore=COPY_IGNORE)
-        baseline = _run_pytest(sandbox_project, workdir, None, "baseline", mode)
-        faulted = _run_pytest(sandbox_project, workdir, fault, "faulted", mode)
+        baseline_project = workdir / "baseline-project"
+        faulted_project = workdir / "faulted-project"
+        shutil.copytree(project_dir, baseline_project, ignore=COPY_IGNORE)
+        shutil.copytree(project_dir, faulted_project, ignore=COPY_IGNORE)
+        if mode == "docker":
+            image = _build_sandbox_image(project_dir, workdir)
+            _run_pytest.sandbox_image = image
+        baseline = _run_pytest(baseline_project, workdir, None, "baseline", mode, image)
+        faulted = _run_pytest(faulted_project, workdir, fault, "faulted", mode, image)
         return {"mode": mode, "command": "python -m pytest -q (fixed command; plugin devdna_faults)",
                 "baseline": baseline, "faulted": faulted, "fault": fault}
     finally:
+        if image:
+            subprocess.run(
+                ["docker", "image", "rm", "--force", image],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
+            )
         shutil.rmtree(workdir, ignore_errors=True)
 
 
@@ -251,7 +388,17 @@ def compare(impact: dict, observation: dict) -> dict:
         "fault_triggers": fault["fault_state"].get("triggers", 0),
     }
     triggers = metrics["fault_triggers"]
-    if triggers == 0:
+    all_covering_mocked = (
+        impact.get("prediction") == "uncertain — covering tests mock the dependency"
+        or impact.get("summary", {}).get("prediction") == "uncertain — covering tests mock the dependency"
+        or (
+            any(t.get("mocked") for t in impact.get("tests", []))
+            and all(t.get("mocked") for t in impact.get("tests", []) if t.get("path") and t.get("junit_key") in fault["results"])
+        )
+    )
+    if all_covering_mocked:
+        status, reason = "uncertain — covering tests mock the dependency", "All covering tests mock the dependency, so the prediction is uncertain."
+    elif triggers == 0:
         status, reason = "inconclusive", "The injected fault was never triggered, so the run says nothing about this failure."
     elif definite == 0:
         status, reason = "inconclusive", "No test had a definite prediction that could be checked."
@@ -278,7 +425,7 @@ def compare(impact: dict, observation: dict) -> dict:
             f"Test '{r['test']}': predicted '{r['prediction']}' but observed '{r['observed']}' (message: {r.get('message', '')[:120]})."
             for r in rows if r["verdict"] == "mismatch"
         ][:5],
-        "neuro_symbolic_grade": "A+" if (fp == 0 and fn == 0 and definite > 0) else ("B" if (tp + tn) > (fp + fn) else "C"),
+        "deterministic_grade": "A+" if (fp == 0 and fn == 0 and definite > 0) else ("B" if (tp + tn) > (fp + fn) else "C"),
     }
 
     return {"status": status, "reason": reason, "rows": rows, "metrics": metrics, "notes": notes, "ai_reconciliation": ai_reconciliation}

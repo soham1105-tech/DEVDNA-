@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import timezone
 
 from app.models import AnalysisRun, Experiment, Finding, Prediction, Project
+from app.services.finding_workflow import active_suppression, finding_fingerprint
 
 STATUS_LABELS = {
     "prediction_only": "Prediction only",
@@ -12,6 +13,8 @@ STATUS_LABELS = {
     "prediction_confirmed": "Prediction confirmed",
     "partially_confirmed": "Partially confirmed",
     "prediction_contradicted": "Prediction contradicted",
+    "uncertain — covering tests mock the dependency": "Uncertain (Covering tests mock dependency)",
+    "uncertain": "Uncertain",
     "inconclusive": "Inconclusive",
     "blocked": "Blocked",
     "failed": "Execution failed",
@@ -30,6 +33,10 @@ def iso(dt):
 def project_out(p: Project, run: AnalysisRun | None = None) -> dict:
     return {
         "id": p.id, "name": p.name, "source_type": p.source_type, "trusted": p.trusted,
+        "ast_repository": (
+            {"owner": p.ast_owner, "repo": p.ast_repo, "branch": p.ast_branch}
+            if p.ast_owner and p.ast_repo and p.ast_branch else None
+        ),
         "ingest_stats": p.ingest_stats or {}, "created_at": iso(p.created_at), "latest_run_id": p.latest_run_id,
         "latest_run": run_out(run) if run else None,
     }
@@ -41,11 +48,18 @@ def run_out(r: AnalysisRun) -> dict:
             "started_at": iso(r.started_at), "finished_at": iso(r.finished_at)}
 
 
-def finding_out(f: Finding) -> dict:
+def finding_out(f: Finding, suppression=None) -> dict:
+    suppressed = active_suppression(suppression)
     return {"id": f.id, "run_id": f.run_id, "rule": f.rule, "title": f.title, "severity": f.severity,
             "component_id": f.component_id, "description": f.description, "evidence": f.evidence or [],
             "confidence": f.confidence, "assumptions": f.assumptions or [], "mitigation": f.mitigation,
-            "review_status": f.review_status, "created_at": iso(f.created_at)}
+            "review_status": f.review_status, "owner": f.owner or "Unassigned",
+            "is_suppressed": suppressed,
+            "suppression": {
+                "owner": suppression.owner, "reason": suppression.reason, "expires_at": iso(suppression.expires_at),
+                "active": suppressed,
+            } if suppression else None,
+            "fingerprint": finding_fingerprint(f), "created_at": iso(f.created_at)}
 
 
 def prediction_out(p: Prediction) -> dict:

@@ -190,3 +190,92 @@ def chat_package(question: str, project: dict, comps: list[dict], edges: list[di
                               + (f" (error handled at {a['handled_at']['file']}:{a['handled_at']['line']})" if a.get("handled_at") else "")
                               for a in routes) or "No routes depend on it.", c["id"])
     return pkg
+
+
+def discrepancy_package(prediction: dict, experiment: dict, comps_by_id: dict, edges: list[dict], root: Path | None) -> Package:
+    pkg = Package()
+    comp = experiment.get("comparison", {})
+    obs = experiment.get("observation", {})
+    impact = prediction.get("impact", {})
+    target = impact.get("target", {})
+    applied = obs.get("faulted", {}).get("fault_state", {}).get("applied", [])
+
+    pkg.add(
+        "scenario",
+        f"Experiment for {impact.get('scenario_label', '')} on {target.get('name', '')} ({target.get('id', '')})",
+        f"Injected fault: {impact.get('fault_description', '')}\n"
+        f"Execution mode: {experiment.get('mode', '')}. Fault applied: {', '.join(applied) or 'none'}. "
+        f"Fault triggers observed: {comp.get('metrics', {}).get('fault_triggers', 0)}.",
+    )
+    pkg.add(
+        "verdict",
+        f"Deterministic comparison status: {comp.get('status', '')}",
+        f"Reason: {comp.get('reason', '')}\nMetrics: {comp.get('metrics', {})}\nNotes: {comp.get('notes', '')}",
+    )
+
+    rows = comp.get("rows", [])
+    tests_by_nodeid = {t.get("nodeid"): t for t in impact.get("tests", []) if t.get("nodeid")}
+    mismatches = [r for r in rows if r.get("verdict") == "mismatch"]
+    matches = [r for r in rows if r.get("verdict") == "match"]
+
+    for r in mismatches:
+        msg = re.sub(r"\s+", " ", r.get("message") or "")[-400:]
+        pkg.add(
+            "mismatched_test",
+            f"DISCREPANCY: {r['nodeid']} predicted {r.get('prediction')}, observed {r.get('observed')}",
+            f"Verdict: mismatch\n"
+            f"Dependency path: {' -> '.join(r.get('path') or []) or 'none'}\n"
+            f"Handled at: {r.get('handled_at') or 'unhandled'}\n"
+            f"Output/Failure message: {msg or 'none (test passed)'}",
+            r["nodeid"],
+        )
+        test_info = tests_by_nodeid.get(r["nodeid"])
+        if test_info and test_info.get("file") and test_info.get("line"):
+            excerpt = source_excerpt(root, test_info["file"], test_info["line"])
+            if excerpt:
+                pkg.add("test_source", f"Source code of mismatched test {r['nodeid']}", excerpt, r["nodeid"])
+
+    if matches:
+        summary_lines = [
+            f"{r['nodeid']}: predicted {r.get('prediction')}, observed {r.get('observed')}"
+            for r in matches[:6]
+        ]
+        pkg.add("matched_tests", f"Confirmed tests matching prediction ({len(matches)} total)", "\n".join(summary_lines))
+
+    affected_routes = [a for a in impact.get("affected", []) if a.get("type") == "route"]
+    for route in affected_routes[:4]:
+        excerpt = source_excerpt(root, route.get("file"), route.get("line"))
+        route_text = (
+            f"Route: {route.get('name')}\n"
+            f"Path to fault: {' -> '.join(route.get('path') or [])}\n"
+            f"Certainty: {route.get('certainty')}"
+        )
+        if excerpt:
+            route_text += f"\nSource excerpt:\n{excerpt}"
+        pkg.add("affected_route", f"Affected route {route.get('name')}", route_text, route.get("id"))
+
+    target_comp = comps_by_id.get(target.get("id"))
+    if target_comp and target_comp.get("file") and target_comp.get("line"):
+        excerpt = source_excerpt(root, target_comp["file"], target_comp["line"])
+        if excerpt:
+            pkg.add("target_source", f"Fault target source {target.get('id')}", excerpt, target.get("id"))
+    first_hops = [a for a in impact.get("affected", []) if a.get("distance") == 1][:2]
+    for hop in first_hops:
+        hop_comp = comps_by_id.get(hop.get("id"))
+        if hop_comp and hop_comp.get("file") and hop_comp.get("line"):
+            excerpt = source_excerpt(root, hop_comp["file"], hop_comp["line"])
+            if excerpt and not any(i.get("source") == hop.get("id") for i in pkg.items):
+                pkg.add("target_caller_source", f"Component calling fault target: {hop.get('id')}", excerpt, hop.get("id"))
+
+    for r in mismatches:
+        path = r.get("path") or []
+        for node_id in path:
+            if node_id.startswith(("func:", "class:")) and len(pkg.items) < 35:
+                comp_obj = comps_by_id.get(node_id)
+                if comp_obj and comp_obj.get("file") and comp_obj.get("line"):
+                    if not any(i.get("source") == node_id for i in pkg.items):
+                        excerpt = source_excerpt(root, comp_obj["file"], comp_obj["line"])
+                        if excerpt:
+                            pkg.add("path_component_source", f"Handler/service on path: {node_id}", excerpt, node_id)
+
+    return pkg

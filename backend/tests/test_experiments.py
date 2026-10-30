@@ -1,5 +1,10 @@
+import subprocess
+from pathlib import Path
+
+import pytest
+
 from app.experiments import runner
-from app.experiments.runner import _scrubbed_env, choose_mode, compare
+from app.experiments.runner import _run_pytest, _scrubbed_env, choose_mode, compare
 
 
 def _impact(preds):
@@ -57,6 +62,139 @@ def test_sandbox_env_is_scrubbed(tmp_path, monkeypatch):
     assert "GEMINI_API_KEY" not in env and "AWS_SECRET_ACCESS_KEY" not in env
     assert "super-secret" not in str(env)
     assert env["TMP"] == str(tmp_path)
+
+
+def test_docker_run_uses_required_isolation_flags_and_named_container(tmp_path, monkeypatch):
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    _run_pytest(tmp_path, tmp_path, None, "baseline", "docker", "devdna-sandbox:test")
+
+    docker_command = commands[0]
+    assert docker_command[:2] == ["docker", "run"]
+    assert "--name" in docker_command
+    assert "--network" in docker_command and docker_command[docker_command.index("--network") + 1] == "none"
+    assert "--read-only" in docker_command
+    assert docker_command[docker_command.index("--cap-drop") + 1] == "ALL"
+    assert "devdna-sandbox:test" in docker_command
+    assert "python" in docker_command and "-m" in docker_command and "pytest" in docker_command
+    assert f"{tmp_path}:/out:rw" in docker_command
+    if runner.os.name != "nt":
+        assert tmp_path.stat().st_mode & 0o777 == 0o777
+
+
+def test_docker_timeout_force_removes_named_container(tmp_path, monkeypatch):
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if command[:2] == ["docker", "run"]:
+            raise subprocess.TimeoutExpired(command, timeout=1, output=b"timed out")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    result = _run_pytest(tmp_path, tmp_path, None, "baseline", "docker", "devdna-sandbox:test")
+
+    run_command = commands[0]
+    container_name = run_command[run_command.index("--name") + 1]
+    assert result["timed_out"] is True
+    assert commands[1] == ["docker", "rm", "--force", container_name]
+
+
+def test_execute_uses_two_fresh_project_copies(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "test_file.py").write_text("original", encoding="utf-8")
+    copies = []
+
+    def fake_copytree(src, dst, ignore=None):
+        copies.append(Path(dst))
+        Path(dst).mkdir(parents=True)
+        (Path(dst) / "test_file.py").write_text(Path(src, "test_file.py").read_text(encoding="utf-8"), encoding="utf-8")
+
+    calls = []
+
+    def fake_run(project_dir, workdir, fault, label, mode, sandbox_image=None):
+        initial_content = Path(project_dir, "test_file.py").read_text(encoding="utf-8")
+        calls.append((Path(project_dir), fault, label, sandbox_image, initial_content))
+        Path(project_dir, "test_file.py").write_text(label, encoding="utf-8")
+        return {"label": label}
+
+    monkeypatch.setattr(runner.shutil, "copytree", fake_copytree)
+    monkeypatch.setattr(runner, "_run_pytest", fake_run)
+    result = runner.execute(source, {"kind": "test"}, "local_harness")
+
+    assert len(copies) == 2 and copies[0] != copies[1]
+    assert calls[0][0] != calls[1][0]
+    assert calls[0][0].name == "baseline-project" and calls[1][0].name == "faulted-project"
+    assert [call[4] for call in calls] == ["original", "original"]
+    assert result["baseline"]["label"] == "baseline" and result["faulted"]["label"] == "faulted"
+
+
+def test_execute_builds_image_with_project_dependencies(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "requirements.txt").write_text("fastapi==0.115.0\n", encoding="utf-8")
+    monkeypatch.setattr(runner.shutil, "copytree", lambda src, dst, ignore=None: Path(dst).mkdir())
+    built = []
+
+    def fake_build(project_dir, workdir):
+        built.append((project_dir, workdir, runner._dependency_requirements(project_dir)))
+        return "devdna-sandbox:test"
+
+    calls = []
+    monkeypatch.setattr(runner, "_build_sandbox_image", fake_build)
+    monkeypatch.setattr(
+        runner,
+        "_run_pytest",
+        lambda project, workdir, fault, label, mode, image=None: calls.append((label, image)) or {"label": label},
+    )
+    removed = []
+    monkeypatch.setattr(runner.subprocess, "run", lambda command, **kwargs: removed.append(command) or subprocess.CompletedProcess(command, 0))
+
+    runner.execute(source, {"kind": "test"}, "docker")
+
+    assert built[0][2] == "fastapi==0.115.0"
+    assert [image for _, image in calls] == ["devdna-sandbox:test"] * 2
+    assert removed == [["docker", "image", "rm", "--force", "devdna-sandbox:test"]]
+
+
+def test_dependency_requirements_reads_project_manifests(tmp_path):
+    (tmp_path / "requirements.txt").write_text("httpx>=0.27\n-e .\n", encoding="utf-8")
+    assert runner._dependency_requirements(tmp_path) == "httpx>=0.27"
+
+    (tmp_path / "requirements.txt").unlink()
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\ndependencies = ["fastapi>=0.115", "httpx>=0.27"]\n',
+        encoding="utf-8",
+    )
+    assert runner._dependency_requirements(tmp_path) == "fastapi>=0.115\nhttpx>=0.27"
+
+    (tmp_path / "pyproject.toml").unlink()
+    (tmp_path / "poetry.lock").write_text(
+        '[[package]]\nname = "fastapi"\nversion = "0.115.0"\n',
+        encoding="utf-8",
+    )
+    assert runner._dependency_requirements(tmp_path) == "fastapi==0.115.0"
+
+
+@pytest.mark.skipif(not runner.docker_available(), reason="Docker daemon or CLI is unavailable")
+def test_real_docker_sandbox_writes_reports_as_sandbox_user(tmp_path):
+    project = tmp_path / "docker-project"
+    project.mkdir()
+    (project / "test_ok.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
+    result = runner.execute(project, {"kind": "test"}, "docker")
+
+    assert result["baseline"]["counts"]["passed"] == 1, result["baseline"]["output"]
+    assert result["faulted"]["counts"]["passed"] == 1, result["faulted"]["output"]
+    assert result["baseline"]["results"] and result["faulted"]["results"]
+    assert result["faulted"]["fault_state"] == {
+        "fault": {"kind": "test"}, "applied": [], "triggers": 0, "network_blocked_attempts": 0, "errors": [],
+    }
 
 
 def test_fault_spec_for_each_scenario(sample_graph):

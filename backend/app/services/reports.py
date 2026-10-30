@@ -11,6 +11,7 @@ from app.analyzer.redact import redact
 from app.graph.engine import __doc__ as SCORE_DOC
 from app.models import AIInteraction, Experiment, Finding, Prediction, Project
 from app.services.analysis import component_dicts
+from app.services.finding_workflow import finding_fingerprint, suppression_map
 from app.services.serialize import STATUS_LABELS, experiment_out, finding_out, prediction_out
 
 LIMITATIONS = [
@@ -51,6 +52,7 @@ def project_report(db: Session, project: Project) -> dict:
 
     run = db.get(AnalysisRun, run_id) if run_id else None
     findings = db.scalars(select(Finding).where(Finding.run_id == run_id)).all() if run_id else []
+    suppressions = suppression_map(db, findings)
     preds = db.scalars(select(Prediction).where(Prediction.project_id == project.id)).all()
     exps = db.scalars(select(Experiment).where(Experiment.project_id == project.id)).all()
     ai = db.scalars(select(AIInteraction).where(AIInteraction.project_id == project.id)).all()
@@ -63,7 +65,7 @@ def project_report(db: Session, project: Project) -> dict:
         "top_critical_components": [{"id": c["id"], "type": c["type"], **{k: c["metrics"].get(k) for k in
                                      ("criticality", "dependents", "betweenness", "routes_depending")}} for c in top],
         "criticality_formula": SCORE_DOC.strip(),
-        "findings": [finding_out(f) for f in findings],
+        "findings": [finding_out(f, suppressions.get(finding_fingerprint(f))) for f in findings],
         "predictions": [{"id": p.id, "scenario": p.scenario, "target": p.target_id, "summary": p.impact.get("summary"),
                          "ai_explained": bool(p.ai_explanation)} for p in preds],
         "experiments": [{"id": e.id, "status": e.status, "status_label": STATUS_LABELS.get(e.status, e.status),

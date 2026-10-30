@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -28,6 +28,9 @@ class Project(Base):
     ingest_stats: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     latest_run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ast_owner: Mapped[str | None] = mapped_column(String(39), nullable=True)
+    ast_repo: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ast_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     runs: Mapped[list["AnalysisRun"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
@@ -92,7 +95,37 @@ class Finding(Base):
     assumptions: Mapped[list] = mapped_column(JSON, default=list)
     mitigation: Mapped[str] = mapped_column(Text, default="")
     review_status: Mapped[str] = mapped_column(String(20), default="open")
+    owner: Mapped[str] = mapped_column(String(500), default="Unassigned")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class FindingSuppression(Base):
+    __tablename__ = "finding_suppressions"
+    __table_args__ = (UniqueConstraint("project_id", "fingerprint"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
+    project_id: Mapped[str] = mapped_column(String(32), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    finding_id: Mapped[str] = mapped_column(String(32))
+    owner: Mapped[str] = mapped_column(String(500))
+    reason: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    active: Mapped[bool] = mapped_column(default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class FindingSuppressionAudit(Base):
+    __tablename__ = "finding_suppression_audit"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
+    project_id: Mapped[str] = mapped_column(String(32), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    finding_id: Mapped[str] = mapped_column(String(32))
+    action: Mapped[str] = mapped_column(String(20))
+    owner: Mapped[str] = mapped_column(String(500))
+    reason: Mapped[str] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class Prediction(Base):
@@ -124,6 +157,34 @@ class Experiment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     prediction: Mapped[Prediction] = relationship()
+
+
+class PredictionOutcome(Base):
+    """Persisted outcome per test from experiment comparisons for calibration."""
+    __tablename__ = "prediction_outcomes"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
+    experiment_id: Mapped[str | None] = mapped_column(ForeignKey("experiments.id", ondelete="CASCADE"), nullable=True, index=True)
+    prediction_id: Mapped[str | None] = mapped_column(ForeignKey("predictions.id", ondelete="CASCADE"), nullable=True, index=True)
+    project_id: Mapped[str] = mapped_column(String(32), index=True)
+    scenario: Mapped[str] = mapped_column(String(60), index=True)
+    target_type: Mapped[str] = mapped_column(String(40), index=True)
+    target_id: Mapped[str] = mapped_column(String(400))
+    test_nodeid: Mapped[str] = mapped_column(String(500))
+
+    # Pattern features
+    guard_present: Mapped[bool] = mapped_column(default=False, index=True)
+    test_mocked: Mapped[bool] = mapped_column(default=False, index=True)
+    certainty: Mapped[str] = mapped_column(String(20), default="definite", index=True)
+    routes_affected: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Outcomes
+    predicted_outcome: Mapped[str] = mapped_column(String(20))
+    observed_outcome: Mapped[str] = mapped_column(String(20))
+    verdict: Mapped[str] = mapped_column(String(30))
+    broke: Mapped[bool] = mapped_column(default=False, index=True)
+
+    pattern_key: Mapped[str] = mapped_column(String(100), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class AIInteraction(Base):

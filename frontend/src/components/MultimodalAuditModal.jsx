@@ -1,35 +1,59 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Camera, UploadCloud, Sparkles, CheckCircle2, AlertTriangle, X, RefreshCw, Layers, ShieldAlert, Cpu } from 'lucide-react'
 import { Button, Modal, Badge, Card } from './ui'
 import { api } from '../services/api'
 
 export default function MultimodalAuditModal({ open, onClose, projectId }) {
+  const maxFileSize = 10 * 1024 * 1024
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [diagramType, setDiagramType] = useState('architecture_diagram')
   const [notes, setNotes] = useState('')
+  const [consent, setConsent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
   const fileInputRef = useRef(null)
+  const previewUrlRef = useRef(null)
+
+  useEffect(() => () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+  }, [])
 
   const handleFileChange = (e) => {
     const selected = e.target.files?.[0]
     if (selected) {
+      if (selected.size > maxFileSize) {
+        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+        previewUrlRef.current = null
+        setFile(null)
+        setPreviewUrl(null)
+        setConsent(false)
+        setError('Image must be 10MB or smaller.')
+        return
+      }
       if (!selected.type.startsWith('image/')) {
+        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+        previewUrlRef.current = null
+        setFile(null)
+        setPreviewUrl(null)
+        setConsent(false)
         setError('Please select an image file (PNG, JPG, WebP).')
         return
       }
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
       setFile(selected)
+      setConsent(false)
       setError(null)
       const url = URL.createObjectURL(selected)
+      previewUrlRef.current = url
       setPreviewUrl(url)
     }
   }
 
   const handleAudit = async () => {
-    if (!file) return
+    if (!file || !consent) return
     setLoading(true)
     setError(null)
     try {
@@ -43,11 +67,15 @@ export default function MultimodalAuditModal({ open, onClose, projectId }) {
   }
 
   const handleReset = () => {
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+    previewUrlRef.current = null
     setFile(null)
     setPreviewUrl(null)
+    setConsent(false)
     setResult(null)
     setError(null)
     setNotes('')
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   return (
@@ -102,7 +130,7 @@ export default function MultimodalAuditModal({ open, onClose, projectId }) {
                 <label className="block text-xs font-medium text-ink-300 mb-1">Image / Diagram Type</label>
                 <select
                   value={diagramType}
-                  onChange={(e) => setDiagramType(e.target.value)}
+                  onChange={(e) => { setDiagramType(e.target.value); setConsent(false) }}
                   className="w-full h-9 rounded-lg border border-ink-600 bg-ink-900 px-3 text-sm text-ink-100 outline-none focus:border-violet-400"
                 >
                   <option value="architecture_diagram">System Architecture / C4 Diagram</option>
@@ -116,12 +144,23 @@ export default function MultimodalAuditModal({ open, onClose, projectId }) {
                 <input
                   type="text"
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(e) => { setNotes(e.target.value); setConsent(false) }}
+                  maxLength={2000}
                   placeholder="e.g. Check database failover and checkout API"
                   className="w-full h-9 rounded-lg border border-ink-600 bg-ink-900 px-3 text-sm text-ink-100 outline-none focus:border-violet-400"
                 />
               </div>
             </div>
+
+            <label className="flex items-start gap-2 text-sm text-ink-300">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                className="mt-0.5 accent-violet-500"
+              />
+              <span>I understand this diagram and notes will be sent to Gemma</span>
+            </label>
 
             {error && (
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm flex items-start gap-2">
@@ -137,7 +176,7 @@ export default function MultimodalAuditModal({ open, onClose, projectId }) {
               <Button
                 variant="primary"
                 onClick={handleAudit}
-                disabled={!file || loading}
+                disabled={!file || !consent || loading}
                 className="gap-2"
               >
                 {loading ? (

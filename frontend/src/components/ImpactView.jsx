@@ -26,7 +26,7 @@ function PathChips({ path }) {
   )
 }
 
-/** DevDNA Neuro-Symbolic Impact View: Combines graph reachability bounds with Gemma 4 neural risk assessment. */
+/** Displays deterministic graph impact and its heuristic risk score. */
 export default function ImpactView({ prediction, compact = false }) {
   const impact = prediction.impact
   const s = impact.summary
@@ -43,14 +43,12 @@ export default function ImpactView({ prediction, compact = false }) {
               </span>
               <div>
                 <h3 className="text-sm font-semibold text-ink-100 flex items-center gap-2">
-                  Gemma 4 Neuro-Symbolic Impact Assessment
+                  Deterministic impact assessment
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider bg-violet-500/20 text-violet-300 border border-violet-500/30">
-                    Risk Score: {impact.neuro_symbolic_simulation.cascading_risk_score}/100
+                    Heuristic score: {impact.neuro_symbolic_simulation.cascading_risk_score}/100
                   </span>
                 </h3>
-                <p className="text-xs text-ink-400">
-                  {impact.neuro_symbolic_simulation.blast_radius_assessment} Blast Radius Severity • Evaluated via Neural Failure Co-Processor
-                </p>
+                <p className="text-xs text-ink-400">Heuristic score, not a failure probability; no AI model used for this score</p>
               </div>
             </div>
             <Badge variant={impact.neuro_symbolic_simulation.blast_radius_assessment === 'CRITICAL' ? 'danger' : 'warning'}>
@@ -75,7 +73,7 @@ export default function ImpactView({ prediction, compact = false }) {
             </div>
             <div>
               <div className="text-[11px] font-semibold text-cyan-300 flex items-center gap-1 mb-1">
-                <Network className="h-3 w-3" /> Test Coverage Analysis
+                <Network className="h-3 w-3" /> Test Mapping Analysis
               </div>
               <ul className="space-y-0.5 text-ink-300 list-disc list-inside">
                 {impact.neuro_symbolic_simulation.test_coverage_gap?.map((g, i) => (

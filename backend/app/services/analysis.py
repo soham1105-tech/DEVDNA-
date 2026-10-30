@@ -10,10 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import db as dbmod
-from app.analyzer.python_analyzer import analyse_project
+from app.analyzer.dispatch import analyse_repository
 from app.graph.engine import build_graph, compute_metrics
 from app.models import AnalysisRun, Component, Edge, Finding, Project
 from app.services.findings import generate_findings
+from app.services.ownership import assign_finding_owners
 
 log = logging.getLogger("devdna.analysis")
 _graph_cache: dict[str, tuple] = {}
@@ -34,12 +35,13 @@ def run_analysis(run_id: str) -> None:
             run.stages = [*run.stages, {"stage": stage, "at": datetime.now(timezone.utc).isoformat()}]
             db.commit()
 
-        result = analyse_project(Path(project.source_path), progress)
+        result = analyse_repository(Path(project.source_path), progress)
         progress("Computing graph metrics", 0.9)
         g = build_graph(result["components"], result["edges"])
         metrics = compute_metrics(g)
         progress("Generating findings", 0.95)
         findings = generate_findings(g, result)
+        assign_finding_owners(Path(project.source_path), findings, result["components"])
 
         for c in result["components"]:
             db.add(Component(run_id=run.id, id=c["id"], type=c["type"], name=c["name"], file=c["file"], line=c["line"],
@@ -67,6 +69,8 @@ def run_analysis(run_id: str) -> None:
             "coverage": result["coverage"],
             "findings": len(findings),
         }
+        if g.graph.get("warnings"):
+            run.summary["graph_warnings"] = g.graph["warnings"]
         run.status, run.stage, run.progress = "completed", "Completed", 1.0
         run.finished_at = datetime.now(timezone.utc)
         project.latest_run_id = run.id

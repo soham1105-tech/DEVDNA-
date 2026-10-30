@@ -99,7 +99,7 @@ export default function Settings() {
         <Card>
           <CardHeader title="Privacy and consent" icon={ShieldCheck} />
           <div className="space-y-3 p-4 text-sm text-ink-300">
-            <p>Before any Gemma request you see the exact redacted evidence that will be sent.</p>
+            <p>Architecture, prediction, and chat requests offer a preview of the redacted evidence before sending. Multimodal audits and dynamic-scenario synthesis use an explicit checkbox confirmation instead of a full evidence preview.</p>
             <Segmented label="consent" value={settings.consentMode} onChange={(v) => { update({ consentMode: v }); if (v === 'ask') writeStore('devdna.consent', null, 'session') }}
               options={[['ask', 'Ask every time'], ['session', 'Allow remembering per tab']]} />
           </div>

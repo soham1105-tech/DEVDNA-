@@ -39,6 +39,8 @@ class Settings:
     max_uncompressed_bytes: int = field(default_factory=lambda: _int("DEVDNA_MAX_UNCOMPRESSED_MB", 500) * 1024 * 1024)
     max_compression_ratio: int = 100
     max_source_file_bytes: int = 512 * 1024
+    # Runtime trace uploads
+    max_trace_bytes: int = field(default_factory=lambda: _int("DEVDNA_MAX_TRACE_MB", 50) * 1024 * 1024)
     # Local repositories may only be analysed inside these roots (explicit opt-in).
     allowed_local_roots: list[str] = field(
         default_factory=lambda: [p for p in os.environ.get("DEVDNA_ALLOWED_LOCAL_ROOTS", "").split(os.pathsep) if p]

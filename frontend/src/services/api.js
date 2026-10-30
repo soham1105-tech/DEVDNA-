@@ -39,9 +39,14 @@ export const api = {
   listProjects: () => call('get', '/api/projects'),
   getProject: (id) => call('get', `/api/projects/${id}`),
   loadSample: () => call('post', '/api/projects/sample'),
-  uploadZip: (file, onProgress) => {
+  loadGithub: (payload) => call('post', '/api/projects/github', payload),
+  uploadZip: ({ file, githubUrl, githubBranch }, onProgress) => {
     const form = new FormData()
     form.append('file', file)
+    if (githubUrl?.trim()) {
+      form.append('github_url', githubUrl.trim())
+      if (githubBranch?.trim()) form.append('github_branch', githubBranch.trim())
+    }
     return call('post', '/api/projects/upload', form, {
       onUploadProgress: (e) => onProgress?.(e.total ? e.loaded / e.total : 0),
     })
@@ -55,6 +60,10 @@ export const api = {
   component: (id, componentId) => call('get', `/api/projects/${id}/components/${componentId.split('/').map(enc).join('/')}`),
   findings: (id) => call('get', `/api/projects/${id}/findings`),
   updateFinding: (findingId, review_status) => call('patch', `/api/findings/${findingId}`, { review_status }),
+  suppressFinding: (findingId, payload) => call('post', `/api/findings/${findingId}/suppress`, payload),
+  unsuppressFinding: (findingId) => call('post', `/api/findings/${findingId}/unsuppress`),
+  findingSuppressionAudit: (findingId) => call('get', `/api/findings/${findingId}/suppression-audit`),
+  drift: (id) => call('get', `/api/projects/${id}/drift`),
   scenarios: (id) => call('get', `/api/projects/${id}/scenarios`),
   analytics: (id) => call('get', `/api/projects/${id}/analytics`),
 

@@ -17,6 +17,8 @@ export default function NewProjectModal({ open, onClose, initialTab = 'sample' }
   const [file, setFile] = useState(null)
   const [path, setPath] = useState('')
   const [projectName, setProjectName] = useState('')
+  const [githubUrl, setGithubUrl] = useState('')
+  const [githubBranch, setGithubBranch] = useState('main')
   const [drag, setDrag] = useState(false)
   const inputRef = useRef(null)
   const flow = useAnalysisFlow()
@@ -28,19 +30,29 @@ export default function NewProjectModal({ open, onClose, initialTab = 'sample' }
       setFile(null)
       setPath('')
       setProjectName('')
+      setGithubUrl('')
+      setGithubBranch('main')
       flow.reset()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTab])
 
   const go = async () => {
+    const kind = tab === 'zip' && !file ? 'github' : tab
     const payload =
       tab === 'zip'
         ? file
+          ? { file, githubUrl, githubBranch }
+          : { github_url: githubUrl.trim(), github_branch: githubBranch.trim() || 'main' }
         : tab === 'local'
-        ? { path: path.trim(), name: projectName.trim() || undefined }
+        ? {
+            path: path.trim(),
+            name: projectName.trim() || undefined,
+            github_url: githubUrl.trim() || undefined,
+            github_branch: githubUrl.trim() ? githubBranch.trim() || undefined : undefined,
+          }
         : undefined
-    const res = await flow.start(tab, payload)
+    const res = await flow.start(kind, payload)
     if (res) {
       setTimeout(() => {
         onClose()
@@ -62,7 +74,11 @@ export default function NewProjectModal({ open, onClose, initialTab = 'sample' }
             <Button variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button variant="primary" onClick={go} disabled={(tab === 'zip' && !file) || (tab === 'local' && !path.trim())}>
+            <Button
+              variant="primary"
+              onClick={go}
+              disabled={(tab === 'zip' && !file && !githubUrl.trim()) || (tab === 'local' && !path.trim())}
+            >
               {tab === 'sample' ? 'Load demo project' : 'Analyse'}
             </Button>
           </>
@@ -115,10 +131,17 @@ export default function NewProjectModal({ open, onClose, initialTab = 'sample' }
               >
                 <FileArchive className="h-6 w-6 text-violet-300" />
                 <div className="mt-2 text-sm text-ink-100">{file ? file.name : 'Drop a .zip of your repository or click to browse'}</div>
-                <div className="mt-1 text-xs text-ink-400">Max 150 MB. Tip: exclude .venv or node_modules to keep archives small, or use the Local Folder tab.</div>
+                <div className="mt-1 text-xs text-ink-400">Max 150 MB. Or enter a public GitHub URL below to import it directly.</div>
                 <input ref={inputRef} type="file" accept=".zip,application/zip" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
               </div>
-              <p className="mt-2 text-xs text-ink-400">Uploaded code is untrusted: it is analysed statically, and experiments only run inside the Docker sandbox.</p>
+              <p className="mt-2 text-xs text-ink-400">Repository code is untrusted: it is analysed statically, and experiments only run inside the Docker sandbox.</p>
+              <GitHubRepositoryFields
+                allowImport
+                githubUrl={githubUrl}
+                setGithubUrl={setGithubUrl}
+                githubBranch={githubBranch}
+                setGithubBranch={setGithubBranch}
+              />
             </div>
           )}
           {tab === 'local' && (
@@ -154,6 +177,12 @@ export default function NewProjectModal({ open, onClose, initialTab = 'sample' }
                   <strong>Git URL detected:</strong> To analyze a remote repository, please download it as a ZIP (GitHub: <em>Code &gt; Download ZIP</em>) and use the <strong>Upload ZIP</strong> tab, or run <code className="font-mono">git clone</code> locally and enter that folder path.
                 </div>
               )}
+              <GitHubRepositoryFields
+                githubUrl={githubUrl}
+                setGithubUrl={setGithubUrl}
+                githubBranch={githubBranch}
+                setGithubBranch={setGithubBranch}
+              />
 
               <p className="text-xs text-ink-400">
                 Folders inside <code className="font-mono text-ink-300">DEVDNA_ALLOWED_LOCAL_ROOTS</code> (configured in <code className="font-mono text-ink-300">backend/.env</code>) can be analysed. Analysis is strictly read-only and static.
@@ -179,5 +208,43 @@ export default function NewProjectModal({ open, onClose, initialTab = 'sample' }
         </>
       )}
     </Modal>
+  )
+}
+
+function GitHubRepositoryFields({ githubUrl, setGithubUrl, githubBranch, setGithubBranch, allowImport = false }) {
+  return (
+    <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
+      <div>
+        <label className="text-xs text-ink-300" htmlFor="github-repository-url">
+          GitHub repository URL (optional)
+        </label>
+        <input
+          id="github-repository-url"
+          type="url"
+          value={githubUrl}
+          onChange={(e) => setGithubUrl(e.target.value)}
+          placeholder="https://github.com/owner/repository"
+          className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none focus:border-violet-400"
+        />
+      </div>
+      <div>
+        <label className="text-xs text-ink-300" htmlFor="github-repository-branch">
+          Branch
+        </label>
+        <input
+          id="github-repository-branch"
+          value={githubBranch}
+          onChange={(e) => setGithubBranch(e.target.value)}
+          placeholder="main"
+          disabled={!githubUrl.trim()}
+          className="mt-1 w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none focus:border-violet-400 disabled:opacity-50"
+        />
+      </div>
+      <p className="text-xs text-ink-400 sm:col-span-2">
+        {allowImport
+          ? 'Enter a public repository URL to import and analyze it directly. Private repositories are not supported.'
+          : 'Link a public GitHub repository to display its AST authenticity score on the Overview dashboard.'}
+      </p>
+    </div>
   )
 }

@@ -64,6 +64,7 @@ function Lab({ project }) {
   const [elapsed, setElapsed] = useState(0)
   const [scenarioMode, setScenarioMode] = useState('preset') // 'preset' | 'dynamic'
   const [customPrompt, setCustomPrompt] = useState('')
+  const [dynamicConsent, setDynamicConsent] = useState(false)
   const [synthesizing, setSynthesizing] = useState(false)
   const startedAt = useRef(null)
 
@@ -205,13 +206,13 @@ function Lab({ project }) {
                 </div>
                 <div className="flex rounded-lg border border-white/[0.07] bg-ink-850 p-0.5 text-xs font-medium">
                   <button
-                    onClick={() => setScenarioMode('preset')}
+                    onClick={() => { setScenarioMode('preset'); setDynamicConsent(false) }}
                     className={`px-3 py-1.5 rounded-md transition-colors ${scenarioMode === 'preset' ? 'bg-ink-700 text-ink-100 shadow-sm' : 'text-ink-400 hover:text-ink-200'}`}
                   >
                     Standard Primitives
                   </button>
                   <button
-                    onClick={() => setScenarioMode('dynamic')}
+                    onClick={() => { setScenarioMode('dynamic'); setDynamicConsent(false) }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors ${scenarioMode === 'dynamic' ? 'bg-violet-600/30 text-violet-200 border border-violet-500/40 shadow-sm' : 'text-ink-400 hover:text-ink-200'}`}
                   >
                     <Sparkles className="h-3 w-3 text-violet-400" />
@@ -247,7 +248,7 @@ function Lab({ project }) {
                     <textarea
                       rows={3}
                       value={customPrompt}
-                      onChange={(e) => setCustomPrompt(e.target.value)}
+                      onChange={(e) => { setCustomPrompt(e.target.value); setDynamicConsent(false) }}
                       placeholder="e.g. Simulate Redis cache eviction storm and socket ConnectionResetError during checkout surge..."
                       className="w-full rounded-xl border border-ink-600 bg-ink-900/90 p-3 text-sm text-ink-100 outline-none focus:border-violet-400 resize-none"
                     />
@@ -264,7 +265,7 @@ function Lab({ project }) {
                       <button
                         key={i}
                         type="button"
-                        onClick={() => setCustomPrompt(p)}
+                        onClick={() => { setCustomPrompt(p); setDynamicConsent(false) }}
                         className="px-2 py-1 rounded bg-ink-800 hover:bg-ink-700 text-[11px] text-ink-300 transition-colors border border-white/5"
                       >
                         {p}
@@ -272,12 +273,22 @@ function Lab({ project }) {
                     ))}
                   </div>
 
+                  <label className="flex items-start gap-2 text-xs text-ink-300">
+                    <input
+                      type="checkbox"
+                      checked={dynamicConsent}
+                      onChange={(e) => setDynamicConsent(e.target.checked)}
+                      className="mt-0.5 accent-violet-500"
+                    />
+                    <span>I understand that my prompt and repository evidence will be sent to Gemma.</span>
+                  </label>
+
                   <div className="flex justify-end pt-2">
                     <Button
                       variant="primary"
                       icon={Sparkles}
                       loading={synthesizing}
-                      disabled={!customPrompt.trim()}
+                      disabled={!customPrompt.trim() || !dynamicConsent}
                       onClick={synthesizeAndPredict}
                     >
                       Synthesize with Gemma 4 & Simulate

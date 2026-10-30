@@ -31,6 +31,7 @@ export function useAnalysisFlow() {
       let res
       if (kind === 'sample') res = await api.loadSample()
       else if (kind === 'zip') res = await api.uploadZip(payload, (p) => setState((s) => ({ ...s, upload: p })))
+      else if (kind === 'github') res = await api.loadGithub(payload)
       else if (kind === 'local') res = await api.loadLocal(payload)
       else if (kind === 'reanalyse') res = { project: payload, run: await api.analyze(payload.id) }
       const run = await follow(res.project, res.run)

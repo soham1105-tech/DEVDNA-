@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import db as dbmod
-from app.api import ai, architecture, experiments, projects, system
+from app.api import ai, architecture, experiments, projects, system, traces
 from app.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -54,5 +54,5 @@ async def unhandled(request: Request, exc: Exception):
                                                             "message": "Unexpected server error. Check the backend logs."}})
 
 
-for r in (system.router, projects.router, architecture.router, experiments.router, ai.router):
+for r in (system.router, projects.router, architecture.router, experiments.router, ai.router, traces.router):
     app.include_router(r)

@@ -1,11 +1,12 @@
-# Sandbox image for running experiments on UNTRUSTED (uploaded / local) projects.
-# Build once:   docker build -t devdna-sandbox:latest backend/sandbox
-# DevDNA then runs:  docker run --rm --network none --read-only --memory 512m --cpus 1
-#                    --pids-limit 128 --cap-drop ALL --security-opt no-new-privileges ...
-# Projects whose tests need packages beyond these will fail their baseline run,
-# and the experiment is reported as "Inconclusive" (never as confirmed).
+# Base image for running experiments on untrusted projects.
+# The runner generates a requirements.txt from the project manifest/lockfile and
+# builds a temporary image from this Dockerfile before starting an isolated run.
 FROM python:3.12-slim
-RUN pip install --no-cache-dir "pytest>=8.3" "fastapi>=0.115" "httpx>=0.27" "sqlalchemy>=2.0" "pydantic>=2.9" \
+RUN pip install --no-cache-dir "pytest>=8.3"
+COPY requirements.txt /tmp/devdna-requirements.txt
+RUN if [ -s /tmp/devdna-requirements.txt ]; then \
+      pip install --no-cache-dir -r /tmp/devdna-requirements.txt; \
+    fi \
     && useradd --create-home --uid 10001 sandbox
 USER sandbox
 WORKDIR /src

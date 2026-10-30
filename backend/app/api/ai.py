@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai.evidence import Package, architecture_package, chat_package, experiment_package, prediction_package
+from app.ai.evidence import Package, architecture_package, chat_package, discrepancy_package, experiment_package, prediction_package
 from app.ai.gemma import AIError, gemma
 from app.api.deps import get_project, require_run
 from app.db import get_db
@@ -20,6 +21,18 @@ from app.services.serialize import experiment_out, iso, prediction_out
 router = APIRouter(prefix="/api", tags=["ai"])
 
 PROMPTS = {
+    "discrepancy": (
+        "Analyse the discrepancy between deterministic prediction and experimental reality below. "
+        "The comparison status is partially_confirmed or prediction_contradicted.\n"
+        "1. 'explanation': Explain WHY prediction and reality disagreed, citing ONLY evidence refs like [E1] "
+        "from the evidence package. Never invent evidence refs. Explain what mechanism (e.g. input validation) "
+        "prevented the fault from manifesting in tests that were predicted to fail.\n"
+        "2. 'generated_test': Provide a standalone pytest test function as Python code that WOULD catch the fault "
+        "on the uncovered route (it must pass in baseline and fail when the fault is injected).\n"
+        "3. 'suggested_patch': Provide a defensive patch (guard, retry, or circuit breaker) formatted as a valid "
+        "unified git diff (with --- a/... and +++ b/... headers) for human review. Never auto-apply.\n"
+        "4. 'evidence_used': List the evidence IDs cited in the explanation."
+    ),
     "architecture": (
         "Explain the architecture of this Python project to a developer joining the team. Group components into "
         "layers, describe the 2-4 most important request flows step by step, list structural risks, and list unknowns "
@@ -163,22 +176,31 @@ async def multimodal_audit(
     file: UploadFile = File(...),
     diagram_type: str = Form("architecture_diagram"),
     notes: str = Form(""),
-    consent: bool = Form(True),
+    consent: bool = Form(False),
     db: Session = Depends(get_db),
 ):
     p = get_project(db, project_id)
     run = require_run(db, p)
     if not consent:
         raise HTTPException(400, detail={"code": "consent_required", "message": "Consent is required to send diagram image to Gemma 4."})
+    if len(diagram_type) > 100:
+        raise HTTPException(400, detail={"code": "diagram_type_too_long", "message": "Diagram type must be 100 characters or fewer."})
+    if len(notes) > 2000:
+        raise HTTPException(400, detail={"code": "notes_too_long", "message": "Notes must be 2000 characters or fewer."})
+
+    mime_type = (file.content_type or "").lower()
+    if mime_type not in ("image/png", "image/jpeg", "image/webp"):
+        raise HTTPException(415, detail={"code": "unsupported_media_type", "message": "Image must be PNG, JPEG, or WebP."})
+
+    max_size = 10 * 1024 * 1024
+    content = bytearray()
+    while chunk := await file.read(64 * 1024):
+        content.extend(chunk)
+        if len(content) > max_size:
+            raise HTTPException(413, detail={"code": "file_too_large", "message": "Image must be 10MB or smaller."})
+
     if not gemma.configured:
         raise HTTPException(503, detail={"code": "not_configured", "message": "Gemma is not configured. Add GEMINI_API_KEY to backend/.env and restart."})
-
-    content = await file.read()
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(413, detail={"code": "file_too_large", "message": "Image must be under 10MB."})
-    mime_type = file.content_type or "image/png"
-    if mime_type not in ("image/png", "image/jpeg", "image/webp"):
-        mime_type = "image/png"
 
     comps, edges, _ = load_graph(db, run.id)
     pkg = architecture_package({"name": p.name}, comps, edges, Path(p.source_path))
@@ -199,7 +221,7 @@ async def multimodal_audit(
         evidence_refs=[i["ref"] + ": " + i["title"] for i in pkg.items],
     )
     try:
-        parsed, meta = gemma.generate_multimodal("multimodal_audit", prompt, content, mime_type, pkg.refs)
+        parsed, meta = gemma.generate_multimodal("multimodal_audit", prompt, bytes(content), mime_type, pkg.refs)
     except AIError as exc:
         record.status = "invalid_output" if exc.code == "invalid_output" else "error"
         record.error = exc.message
@@ -278,3 +300,123 @@ def synthesize_dynamic_scenario(project_id: str, body: DynamicScenarioIn, db: Se
     db.commit()
 
     return {"result": parsed.model_dump(), "meta": {**meta, "interaction_id": record.id}}
+
+
+@router.post("/predictions/{prediction_id}/ai/discrepancy")
+@router.post("/predictions/{prediction_id}/discrepancy")
+def resolve_discrepancy(prediction_id: str, body: AIRequest = AIRequest(), db: Session = Depends(get_db)):
+    pred = db.get(Prediction, prediction_id)
+    if not pred:
+        raise HTTPException(404, detail={"code": "prediction_not_found", "message": "Prediction not found"})
+    p = get_project(db, pred.project_id)
+
+    exp = db.scalars(
+        select(Experiment)
+        .where(Experiment.prediction_id == pred.id)
+        .order_by(Experiment.created_at.desc())
+    ).first()
+    if not exp or not exp.comparison:
+        raise HTTPException(
+            409,
+            detail={
+                "code": "no_experiment_comparison",
+                "message": "Discrepancy analysis requires an executed experiment with comparison results.",
+            },
+        )
+    if exp.status not in ("partially_confirmed", "prediction_contradicted"):
+        raise HTTPException(
+            409,
+            detail={
+                "code": "invalid_status",
+                "message": f"Discrepancy analysis only runs when experiment status is partially_confirmed or prediction_contradicted, but status is '{exp.status}'.",
+            },
+        )
+
+    comps, edges, _ = load_graph(db, pred.run_id)
+    pkg = discrepancy_package(
+        prediction_out(pred),
+        experiment_out(exp, include_prediction=False),
+        {c["id"]: c for c in comps},
+        edges,
+        Path(p.source_path),
+    )
+    evidence = pkg.to_dict()
+
+    if body.preview:
+        return {"preview": True, "model": gemma.model, "configured": gemma.configured, "evidence": evidence}
+    if not body.consent:
+        raise HTTPException(
+            400,
+            detail={"code": "consent_required", "message": "Confirm that the listed evidence may be sent to the Gemma API."},
+        )
+    if not gemma.configured:
+        raise HTTPException(
+            503,
+            detail={"code": "not_configured", "message": "AI is not configured. Add GEMINI_API_KEY to backend/.env and restart the backend."},
+        )
+
+    full_prompt = f"{PROMPTS['discrepancy']}\n\nEVIDENCE:\n{pkg.render()}"
+    record = AIInteraction(
+        project_id=p.id,
+        kind="discrepancy",
+        subject_id=pred.id,
+        model=gemma.model,
+        status="error",
+        evidence_refs=[i["ref"] + ": " + i["title"] for i in pkg.items],
+    )
+    try:
+        parsed, meta = gemma.generate("discrepancy", full_prompt, pkg.refs)
+    except AIError as exc:
+        record.status = "invalid_output" if exc.code == "invalid_output" else "error"
+        record.error = exc.message
+        db.add(record)
+        db.commit()
+        raise HTTPException(exc.status, detail={"code": exc.code, "message": exc.message, "model": gemma.model})
+
+    if isinstance(parsed.explanation, str):
+        parsed.explanation = re.sub(
+            r'\[?(E\d+)\]?',
+            lambda m: m.group(0) if m.group(1) in pkg.refs else '',
+            parsed.explanation,
+        ).strip()
+
+    record.status = "ok"
+    record.response = parsed.model_dump()
+    record.latency_ms = meta["latency_ms"]
+    db.add(record)
+    db.commit()
+
+    return {
+        "explanation": parsed.explanation,
+        "generated_test": parsed.generated_test,
+        "suggested_patch": parsed.suggested_patch,
+        "evidence_used": parsed.evidence_used,
+        "result": parsed.model_dump(),
+        "meta": {**meta, "interaction_id": record.id},
+        "evidence": evidence,
+    }
+
+
+@router.get("/predictions/{prediction_id}/ai/discrepancy/latest")
+@router.get("/predictions/{prediction_id}/discrepancy/latest")
+def latest_discrepancy(prediction_id: str, db: Session = Depends(get_db)):
+    pred = db.get(Prediction, prediction_id)
+    if not pred:
+        raise HTTPException(404, detail={"code": "prediction_not_found", "message": "Prediction not found"})
+    rec = db.scalars(
+        select(AIInteraction).where(
+            AIInteraction.kind == "discrepancy",
+            AIInteraction.status == "ok",
+            AIInteraction.subject_id == pred.id,
+        ).order_by(AIInteraction.created_at.desc())
+    ).first()
+    if not rec:
+        return None
+    return {
+        "explanation": rec.response.get("explanation"),
+        "generated_test": rec.response.get("generated_test"),
+        "suggested_patch": rec.response.get("suggested_patch"),
+        "evidence_used": rec.response.get("evidence_used", []),
+        "result": rec.response,
+        "meta": {"model": rec.model, "generated_at": iso(rec.created_at), "latency_ms": rec.latency_ms, "interaction_id": rec.id},
+    }
