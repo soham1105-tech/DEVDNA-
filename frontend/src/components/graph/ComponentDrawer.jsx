@@ -12,16 +12,16 @@ const SCENARIO_FOR = { database: 'db_unavailable', external_api: 'external_api_u
 const TABS = ['Details', 'Relationships', 'Source', 'Findings']
 
 export function EvidenceList({ evidence }) {
-  if (!evidence?.length) return <p className="text-xs text-ink-400">No source evidence recorded.</p>
+  if (!evidence?.length) return <p className="text-xs text-faint">No source evidence recorded.</p>
   return (
     <ul className="space-y-1.5">
       {evidence.map((ev, i) => (
-        <li key={i} className="rounded-md border border-white/[0.05] bg-ink-900/70 px-2.5 py-1.5">
-          <div className="flex items-center gap-2 font-mono text-[11px] text-cyan-200">
+        <li key={i} className="rounded-card border border-edge bg-ground px-2.5 py-1.5">
+          <div className="num flex items-center gap-2 text-[11px] text-accent">
             <FileCode2 className="h-3 w-3" /> {ev.file}{ev.line ? `:${ev.line}` : ''}
           </div>
-          {ev.snippet && <code className="mt-1 block whitespace-pre-wrap break-all font-mono text-[11px] text-ink-200">{ev.snippet}</code>}
-          {ev.detail && <div className="mt-0.5 text-[11px] text-ink-400">{ev.detail}</div>}
+          {ev.snippet && <code className="num mt-1 block whitespace-pre-wrap break-all text-[11px] text-muted">{ev.snippet}</code>}
+          {ev.detail && <div className="mt-0.5 text-[11px] text-faint">{ev.detail}</div>}
         </li>
       ))}
     </ul>
@@ -31,15 +31,15 @@ export function EvidenceList({ evidence }) {
 function EdgeRow({ edge, otherId, direction, onSelectNode }) {
   const [open, setOpen] = useState(false)
   return (
-    <li className="rounded-lg border border-white/[0.06] bg-ink-900/40">
+    <li className="rounded-card border border-edge bg-ground">
       <div className="flex items-center gap-2 px-3 py-2">
-        {direction === 'out' ? <ArrowDownRight className="h-3.5 w-3.5 text-cyan-300" /> : <ArrowUpLeft className="h-3.5 w-3.5 text-violet-300" />}
-        <span className="text-[11px] text-ink-400">{EDGE_LABELS[edge.type] || edge.type}</span>
-        <button onClick={() => onSelectNode(otherId)} className="min-w-0 flex-1 truncate text-left font-mono text-xs text-ink-100 hover:text-violet-200">
+        {direction === 'out' ? <ArrowDownRight className="h-3.5 w-3.5 text-faint" /> : <ArrowUpLeft className="h-3.5 w-3.5 text-faint" />}
+        <span className="text-[11px] text-faint">{EDGE_LABELS[edge.type] || edge.type}</span>
+        <button onClick={() => onSelectNode(otherId)} className="num min-w-0 flex-1 truncate text-left text-xs text-ink hover:text-accent">
           {shortId(otherId)}
         </button>
         <EvidenceBadge classification={edge.classification} />
-        <button onClick={() => setOpen((o) => !o)} className="text-[11px] text-violet-300 hover:underline" aria-expanded={open}>
+        <button onClick={() => setOpen((o) => !o)} className="text-[11px] text-accent hover:underline" aria-expanded={open}>
           {open ? 'Hide' : 'Evidence'}
         </button>
       </div>
@@ -72,7 +72,7 @@ export default function ComponentDrawer({ projectId, componentId, onClose, onSel
         <div>
           <div className="flex flex-wrap items-center gap-2 px-5 pt-4">
             <TypeBadge type={data.type} />
-            {data.file && <Badge className="border-white/10 bg-white/[0.03] font-mono text-ink-200">{data.file}{data.line ? `:${data.line}` : ''}</Badge>}
+            {data.file && <Badge className="bg-neutral-bg text-neutral-ink"><span className="num">{data.file}{data.line ? `:${data.line}` : ''}</span></Badge>}
           </div>
           <div className="flex flex-wrap gap-2 px-5 pt-3">
             <Button size="sm" icon={Zap} onClick={() => onBlastRadius(componentId)}>Show blast radius</Button>
@@ -82,12 +82,13 @@ export default function ComponentDrawer({ projectId, componentId, onClose, onSel
               </Link>
             )}
           </div>
-          <div className="mt-4 flex gap-1 border-b border-white/[0.06] px-5" role="tablist">
+          <div className="mt-4 flex gap-1 border-b border-edge px-5" role="tablist">
             {TABS.map((name) => (
-              <button key={name} role="tab" aria-selected={tab === name} onClick={() => setTab(name)} className={`relative px-3 py-2 text-xs font-medium ${tab === name ? 'text-ink-100' : 'text-ink-400 hover:text-ink-200'}`}>
+              <button key={name} role="tab" aria-selected={tab === name} onClick={() => setTab(name)} className={`relative px-3 py-2 text-xs font-medium ${tab === name ? 'text-ink' : 'text-faint hover:text-muted'}`}>
                 {name}
-                {name === 'Findings' && data.findings.length > 0 && <span className="ml-1 text-rose-300">{data.findings.length}</span>}
-                {tab === name && <motion.span layoutId="drawer-tab" className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-violet-400" />}
+                {name === 'Findings' && data.findings.length > 0 && <span className="num ml-1 text-negative">{data.findings.length}</span>}
+                {/* Underline tab: the 1px accent indicator lies on the drawer's bottom rule. */}
+                {tab === name && <motion.span layoutId="drawer-tab" className="absolute inset-x-1 -bottom-px h-px bg-accent" />}
               </button>
             ))}
           </div>
@@ -103,29 +104,29 @@ export default function ComponentDrawer({ projectId, componentId, onClose, onSel
                     ['Tests covering', data.metrics.tests_covering],
                     ['Betweenness', data.metrics.betweenness],
                   ].map(([k, v]) => (
-                    <div key={k} className="rounded-lg border border-white/[0.05] bg-ink-900/60 p-2.5">
-                      <div className="text-[10px] uppercase tracking-wider text-ink-400">{k}</div>
-                      <div className="mt-0.5 font-medium tabular-nums text-ink-100">{v ?? '—'}</div>
+                    <div key={k} className="rounded-card border border-edge bg-ground p-2.5">
+                      <div className="text-[11px] text-faint">{k}</div>
+                      <div className="num mt-0.5 font-medium text-ink">{v ?? '—'}</div>
                     </div>
                   ))}
                 </div>
-                {data.data?.method && <Row k="HTTP" v={<span className="font-mono">{data.data.method} {data.data.path}</span>} />}
-                {data.data?.handler && <Row k="Handler" v={<button className="font-mono text-violet-200 hover:underline" onClick={() => onSelectNode(data.data.handler)}>{shortId(data.data.handler)}</button>} />}
+                {data.data?.method && <Row k="HTTP" v={<span className="num">{data.data.method} {data.data.path}</span>} />}
+                {data.data?.handler && <Row k="Handler" v={<button className="num text-accent hover:underline" onClick={() => onSelectNode(data.data.handler)}>{shortId(data.data.handler)}</button>} />}
                 {data.data?.framework && <Row k="Framework" v={data.data.framework} />}
                 {data.data?.engine && <Row k="Engine" v={data.data.engine} />}
                 {data.data?.launcher_methods && <Row k="Starts via" v={data.data.launcher_methods.join(', ')} />}
                 {data.data?.raises?.length > 0 && <Row k="Raises" v={data.data.raises.join(', ')} />}
-                {data.data?.args?.length > 0 && <Row k="Arguments" v={<span className="font-mono">{data.data.args.join(', ')}</span>} />}
-                {data.data?.nodeid && <Row k="Pytest id" v={<span className="break-all font-mono">{data.data.nodeid}</span>} />}
+                {data.data?.args?.length > 0 && <Row k="Arguments" v={<span className="num">{data.data.args.join(', ')}</span>} />}
+                {data.data?.nodeid && <Row k="Pytest id" v={<span className="num break-all">{data.data.nodeid}</span>} />}
                 {data.data?.sql?.length > 0 && (
                   <div>
-                    <div className="mb-1 text-xs font-medium uppercase tracking-wider text-ink-400">SQL statements</div>
+                    <div className="mb-1 text-xs font-medium text-ink">SQL statements</div>
                     {data.data.sql.map((s, i) => (
-                      <code key={i} className="mb-1 block rounded bg-ink-900 px-2 py-1 font-mono text-[11px] text-amber-100/90">L{s.line}: {s.statement}</code>
+                      <code key={i} className="num mb-1 block rounded bg-ground px-2 py-1 text-[11px] text-warning-ink">L{s.line}: {s.statement}</code>
                     ))}
                   </div>
                 )}
-                <div className="text-xs text-ink-400">
+                <div className="text-xs text-faint">
                   {data.upstream.length} components depend on this (upstream) · it depends on {data.downstream.length} (downstream).
                 </div>
               </div>
@@ -142,26 +143,26 @@ export default function ComponentDrawer({ projectId, componentId, onClose, onSel
             )}
             {tab === 'Source' &&
               (data.source_excerpt ? (
-                <pre className="overflow-x-auto rounded-lg border border-white/[0.06] bg-ink-950 p-3 font-mono text-[11px] leading-relaxed text-ink-200">{data.source_excerpt}</pre>
+                <pre className="num overflow-x-auto rounded-card border border-edge bg-well p-3 text-[11px] leading-relaxed text-muted">{data.source_excerpt}</pre>
               ) : (
-                <p className="text-sm text-ink-400">No source excerpt for this component type (resources like databases and env variables are inferred from the code that uses them; see Relationships).</p>
+                <p className="text-sm text-faint">No source excerpt for this component type (resources like databases and env variables are inferred from the code that uses them; see Relationships).</p>
               ))}
             {tab === 'Findings' &&
               (data.findings.length ? (
                 <ul className="space-y-2">
                   {data.findings.map((f) => (
-                    <li key={f.id} className="rounded-lg border border-white/[0.06] bg-ink-900/50 p-3">
-                      <div className="flex items-center gap-2"><SeverityBadge severity={f.severity} /><span className="text-sm text-ink-100">{f.title}</span></div>
-                      <p className="mt-1 text-xs text-ink-300">{f.description}</p>
+                    <li key={f.id} className="rounded-card border border-edge bg-ground p-3">
+                      <div className="flex items-center gap-2"><SeverityBadge severity={f.severity} /><span className="text-sm text-ink">{f.title}</span></div>
+                      <p className="mt-1 text-xs text-muted">{f.description}</p>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-ink-400">No findings attached to this component.</p>
+                <p className="text-sm text-faint">No findings attached to this component.</p>
               ))}
           </motion.div>
           <div className="px-5 pb-5">
-            <button onClick={() => onSelectNode(componentId, true)} className="flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-200">
+            <button onClick={() => onSelectNode(componentId, true)} className="flex items-center gap-1.5 text-xs text-muted hover:text-ink">
               <Crosshair className="h-3 w-3" /> Center in graph
             </button>
           </div>
@@ -173,9 +174,9 @@ export default function ComponentDrawer({ projectId, componentId, onClose, onSel
 
 function Row({ k, v }) {
   return (
-    <div className="flex gap-3 text-sm">
-      <span className="w-24 shrink-0 text-ink-400">{k}</span>
-      <span className="min-w-0 text-ink-100">{v}</span>
+    <div className="flex gap-3 border-b border-rule py-1.5 text-sm last:border-b-0">
+      <span className="w-24 shrink-0 text-faint">{k}</span>
+      <span className="min-w-0 text-ink">{v}</span>
     </div>
   )
 }
@@ -183,7 +184,7 @@ function Row({ k, v }) {
 function Section({ title, children }) {
   return (
     <div>
-      <div className="mb-1.5 text-xs font-medium uppercase tracking-wider text-ink-400">{title}</div>
+      <div className="mb-1.5 text-xs font-medium text-ink">{title}</div>
       <ul className="space-y-1.5">{children}</ul>
     </div>
   )

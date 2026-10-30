@@ -20,7 +20,6 @@ export default function ExperimentDetail() {
       {data && (
         <>
           <PageHeader
-            eyebrow="Experiment report"
             title={`${data.prediction?.impact?.scenario_label} → ${shortId(data.prediction?.target_id || '')}`}
             subtitle={`Approved ${timeAgo(data.approved_at)} · finished ${timeAgo(data.finished_at)} · id ${data.id}`}
           />

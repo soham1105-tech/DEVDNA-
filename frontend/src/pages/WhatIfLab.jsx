@@ -31,14 +31,15 @@ function Stepper({ step, maxStep, onStep }) {
         return (
           <li key={s}>
             <button disabled={!reachable} onClick={() => onStep(i)} className="group w-full text-left disabled:cursor-default" aria-current={active ? 'step' : undefined}>
-              <div className="h-1 overflow-hidden rounded-full bg-ink-700">
-                <motion.div className="h-full bg-gradient-to-r from-violet-500 to-cyan-400" initial={false} animate={{ width: done ? '100%' : active ? '50%' : '0%' }} transition={{ duration: 0.35 }} />
+              {/* Progress track: the accent marks position, never fills the step. */}
+              <div className="h-px overflow-hidden bg-control">
+                <motion.div className="h-full bg-accent" initial={false} animate={{ width: done ? '100%' : active ? '50%' : '0%' }} transition={{ duration: 0.35 }} />
               </div>
               <div className="mt-2 flex items-center gap-1.5">
-                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${done ? 'bg-emerald-400/20 text-emerald-300' : active ? 'bg-violet-500/25 text-violet-100' : 'bg-ink-700 text-ink-400'}`}>
+                <span className={`num flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] ${done ? 'border-positive/50 text-positive' : active ? 'border-accent text-accent' : 'border-control text-faint'}`}>
                   {done ? <Check className="h-3 w-3" /> : i + 1}
                 </span>
-                <span className={`hidden truncate text-xs sm:block ${active ? 'text-ink-100' : 'text-ink-400'}`}>{s}</span>
+                <span className={`hidden truncate text-xs sm:block ${active ? 'text-ink' : 'text-faint'}`}>{s}</span>
               </div>
             </button>
           </li>
@@ -188,7 +189,6 @@ function Lab({ project }) {
   return (
     <>
       <PageHeader
-        eyebrow="What-If Lab"
         title="Predict, approve, execute, compare"
         subtitle="Run a supported failure scenario against the project's own test suite in a controlled environment, then compare reality with the prediction."
         actions={step > 0 && <Button variant="ghost" onClick={restart}>New scenario</Button>}
@@ -199,23 +199,23 @@ function Lab({ project }) {
       <motion.div key={step} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.22 }}>
           {step === 0 && (
             <Card className="mx-auto max-w-3xl p-5 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rule pb-3">
                 <div>
-                  <h2 className="text-base font-semibold text-ink-100">1. Select or Synthesize Failure Scenario</h2>
-                  <p className="mt-0.5 text-xs text-ink-300">Target a standard chaos primitive or let Gemma 4 synthesize an arbitrary failure.</p>
+                  <h2 className="text-base font-semibold text-ink">1. Select or Synthesize Failure Scenario</h2>
+                  <p className="mt-0.5 text-xs text-muted">Target a standard chaos primitive or let Gemma 4 synthesize an arbitrary failure.</p>
                 </div>
-                <div className="flex rounded-lg border border-white/[0.07] bg-ink-850 p-0.5 text-xs font-medium">
+                <div className="flex rounded-control border border-edge bg-surface p-0.5 text-xs font-medium">
                   <button
                     onClick={() => { setScenarioMode('preset'); setDynamicConsent(false) }}
-                    className={`px-3 py-1.5 rounded-md transition-colors ${scenarioMode === 'preset' ? 'bg-ink-700 text-ink-100 shadow-sm' : 'text-ink-400 hover:text-ink-200'}`}
+                    className={`rounded-full px-3 py-1.5 transition-colors ${scenarioMode === 'preset' ? 'bg-raised text-ink' : 'text-faint hover:text-muted'}`}
                   >
                     Standard Primitives
                   </button>
                   <button
                     onClick={() => { setScenarioMode('dynamic'); setDynamicConsent(false) }}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors ${scenarioMode === 'dynamic' ? 'bg-violet-600/30 text-violet-200 border border-violet-500/40 shadow-sm' : 'text-ink-400 hover:text-ink-200'}`}
+                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${scenarioMode === 'dynamic' ? 'bg-accent/15 text-accent' : 'text-faint hover:text-muted'}`}
                   >
-                    <Sparkles className="h-3 w-3 text-violet-400" />
+                    <Sparkles className="h-3 w-3" />
                     Gemma 4 Dynamic Synthesizer
                   </button>
                 </div>
@@ -232,30 +232,31 @@ function Lab({ project }) {
                 </>
               ) : (
                 <div className="space-y-3.5">
-                  <div className="p-3.5 rounded-xl bg-violet-950/20 border border-violet-500/30 space-y-2">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-violet-300">
+                  <div className="rounded-card border border-accent/30 bg-accent/10 space-y-2 p-3.5">
+                    <div className="flex items-center gap-2 text-xs font-medium text-accent">
                       <Sparkles className="h-3.5 w-3.5" /> Arbitrary Chaos Scenario Generation
                     </div>
-                    <p className="text-xs text-ink-200 leading-relaxed">
+                    <p className="text-xs leading-relaxed text-muted">
                       Describe any arbitrary failure mode in natural language. Gemma 4 will inspect the repository AST, map the failure to vulnerable target components, identify relevant exception hierarchies, and generate a dynamic chaos fault specification.
                     </p>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-ink-300 mb-1.5">
+                    <label className="mb-1.5 block text-xs font-medium text-muted" htmlFor="dynamic-prompt">
                       Describe the Failure Scenario to Simulate:
                     </label>
                     <textarea
+                      id="dynamic-prompt"
                       rows={3}
                       value={customPrompt}
                       onChange={(e) => { setCustomPrompt(e.target.value); setDynamicConsent(false) }}
                       placeholder="e.g. Simulate Redis cache eviction storm and socket ConnectionResetError during checkout surge..."
-                      className="w-full rounded-xl border border-ink-600 bg-ink-900/90 p-3 text-sm text-ink-100 outline-none focus:border-violet-400 resize-none"
+                      className="w-full resize-none rounded-card border border-control bg-surface p-3 text-sm text-ink outline-none focus:border-accent"
                     />
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 items-center">
-                    <span className="text-[11px] text-ink-400 font-medium mr-1">Quick prompts:</span>
+                    <span className="mr-1 text-[11px] font-medium text-faint">Quick prompts:</span>
                     {[
                       'Redis connection drop & cache eviction',
                       'JWT auth token expired cascade',
@@ -266,19 +267,19 @@ function Lab({ project }) {
                         key={i}
                         type="button"
                         onClick={() => { setCustomPrompt(p); setDynamicConsent(false) }}
-                        className="px-2 py-1 rounded bg-ink-800 hover:bg-ink-700 text-[11px] text-ink-300 transition-colors border border-white/5"
+                        className="rounded-full border border-edge bg-ground px-2 py-1 text-[11px] text-muted transition-colors hover:bg-raised hover:text-ink"
                       >
                         {p}
                       </button>
                     ))}
                   </div>
 
-                  <label className="flex items-start gap-2 text-xs text-ink-300">
+                  <label className="flex items-start gap-2 text-xs text-muted">
                     <input
                       type="checkbox"
                       checked={dynamicConsent}
                       onChange={(e) => setDynamicConsent(e.target.checked)}
-                      className="mt-0.5 accent-violet-500"
+                      className="mt-0.5 accent-[var(--color-accent)]"
                     />
                     <span>I understand that my prompt and repository evidence will be sent to Gemma.</span>
                   </label>
@@ -327,24 +328,24 @@ function Lab({ project }) {
 
           {step === 3 && prediction && (
             <Card className="mx-auto max-w-3xl p-5">
-              <h2 className="flex items-center gap-2 text-base font-semibold text-ink-100"><ShieldCheck className="h-4 w-4 text-violet-300" /> 4. Approve the experiment</h2>
-              <p className="mt-1 text-sm text-ink-300">Nothing runs without your approval. This is exactly what will happen:</p>
-              <ul className="mt-4 space-y-2 text-sm text-ink-200">
-                <li className="flex gap-2"><Container className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
+              <h2 className="flex items-center gap-2 text-base font-semibold text-ink"><ShieldCheck className="h-4 w-4 text-accent" /> 4. Approve the experiment</h2>
+              <p className="mt-1 text-sm text-muted">Nothing runs without your approval. This is exactly what will happen:</p>
+              <ul className="mt-4 space-y-2 text-sm text-muted">
+                <li className="flex gap-2"><Container className="mt-0.5 h-4 w-4 shrink-0 text-faint" />
                   {mode === 'local' && 'Mode: local restricted harness (allowed because this is the bundled, trusted sample).'}
                   {mode === 'docker' && 'Mode: Docker sandbox: no network, read-only source, 512 MB memory, 1 CPU, 128 processes.'}
                   {mode === 'blocked' && 'Mode: BLOCKED. This project is untrusted and the Docker sandbox is unavailable, so no code will run.'}
                 </li>
-                <li className="flex gap-2"><Play className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" /> A disposable copy of the project runs <code className="whitespace-nowrap font-mono text-xs">python -m pytest</code> twice: once as a baseline, once with the fault injected.</li>
-                <li className="flex gap-2"><Beaker className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" /> Fault: {prediction.impact.fault_description}</li>
-                <li className="flex gap-2"><Lock className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" /> Outbound network blocked, environment scrubbed of API keys, {90}s timeout, output capped, temp files deleted afterwards.</li>
-                <li className="flex gap-2"><Timer className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" /> No production systems are touched. The fixed command cannot be changed from the UI.</li>
+                <li className="flex gap-2"><Play className="mt-0.5 h-4 w-4 shrink-0 text-faint" /> A disposable copy of the project runs <code className="num whitespace-nowrap text-xs text-ink">python -m pytest</code> twice: once as a baseline, once with the fault injected.</li>
+                <li className="flex gap-2"><Beaker className="mt-0.5 h-4 w-4 shrink-0 text-faint" /> Fault: {prediction.impact.fault_description}</li>
+                <li className="flex gap-2"><Lock className="mt-0.5 h-4 w-4 shrink-0 text-faint" /> Outbound network blocked, environment scrubbed of API keys, {90}s timeout, output capped, temp files deleted afterwards.</li>
+                <li className="flex gap-2"><Timer className="mt-0.5 h-4 w-4 shrink-0 text-faint" /> No production systems are touched. The fixed command cannot be changed from the UI.</li>
               </ul>
               {mode === 'blocked' && (
                 <div className="mt-4"><InlineNotice tone="warn" icon={Ban}>If you continue, the experiment is recorded as <b>Blocked</b> and the prediction stays unvalidated.</InlineNotice></div>
               )}
-              <label className="mt-5 flex cursor-pointer items-start gap-2.5 text-sm text-ink-100">
-                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-violet-500" checked={approved} onChange={(e) => setApproved(e.target.checked)} />
+              <label className="mt-5 flex cursor-pointer items-start gap-2.5 text-sm text-ink">
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]" checked={approved} onChange={(e) => setApproved(e.target.checked)} />
                 I approve running this experiment as described.
               </label>
               <div className="mt-5 flex justify-between">
@@ -357,12 +358,12 @@ function Lab({ project }) {
           {step === 4 && experiment && (
             <Card className="mx-auto max-w-xl p-8 text-center">
               <div className="relative mx-auto h-20 w-20">
-                <motion.div className="absolute inset-0 rounded-full border-2 border-violet-500/30 border-t-cyan-300" animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.1, ease: 'linear' }} />
-                <Beaker className="absolute inset-0 m-auto h-8 w-8 text-violet-200" />
+                <motion.div className="absolute inset-0 rounded-full border border-control border-t-accent" animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1.1, ease: 'linear' }} />
+                <Beaker className="absolute inset-0 m-auto h-8 w-8 text-muted" />
               </div>
-              <h2 className="mt-5 text-base font-semibold text-ink-100">Running experiment…</h2>
-              <p className="mt-1 text-sm text-ink-300">Status: {experiment.status} · {elapsed}s elapsed</p>
-              <p className="mt-3 text-xs text-ink-400">Baseline run, then faulted run. Results appear as soon as both finish.</p>
+              <h2 className="mt-5 text-base font-semibold text-ink">Running experiment…</h2>
+              <p className="num mt-1 text-sm text-muted">Status: {experiment.status} · {elapsed}s elapsed</p>
+              <p className="mt-3 text-xs text-faint">Baseline run, then faulted run. Results appear as soon as both finish.</p>
             </Card>
           )}
 
@@ -370,8 +371,8 @@ function Lab({ project }) {
             <div className="space-y-4">
               {experiment.status !== 'blocked' && experiment.status !== 'failed' && <CompletionBurst status={experiment.status} />}
               <PredictionVsReality experiment={experiment} onUpdate={setExperiment} />
-              <div className="text-center text-sm text-ink-400">
-                Saved. <Link to={`/experiments/${experiment.id}`} className="text-violet-300 hover:underline">Open in Experiments</Link>
+              <div className="text-center text-sm text-faint">
+                Saved. <Link to={`/experiments/${experiment.id}`} className="text-accent hover:underline">Open in Experiments</Link>
               </div>
             </div>
           )}

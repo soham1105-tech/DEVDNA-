@@ -9,6 +9,7 @@ import MultimodalAuditModal from '../components/MultimodalAuditModal'
 import ProjectGate from '../components/ProjectGate'
 import { Badge, Button, Card, ErrorState, EvidenceBadge, IconButton, Modal, PageHeader, Skeleton, TypeBadge } from '../components/ui'
 import { useAsync } from '../hooks/useAsync'
+import { useSettings } from '../hooks/useSettings'
 import { api } from '../services/api'
 import { EDGE_LABELS, NODE_TYPES } from '../utils/constants'
 import { filterGraph, layout, neighbourhood, shortId } from '../utils/graph'
@@ -31,6 +32,8 @@ export default function Architecture() {
 
 function Explorer({ project }) {
   const [params, setParams] = useSearchParams()
+  const { settings } = useSettings()
+  const isBright = settings.theme === 'bright'
   const arch = useAsync(() => api.architecture(project.id), [project.id, project.latest_run_id])
   const predictionId = params.get('prediction')
   const prediction = useAsync(() => api.prediction(predictionId), [predictionId], { enabled: Boolean(predictionId) })
@@ -112,7 +115,7 @@ function Explorer({ project }) {
         const s = highlight.states
         const active = (s[e.source] || e.source === selected) && (s[e.target] || e.target === selected)
         const impact = active && (String(s[e.source]).startsWith('impact') || s[e.target] === 'source')
-        const color = impact ? '#f43f5e' : active ? '#a78bfa' : e.classification === 'inferred' ? '#3a3f52' : '#4b5168'
+        const color = impact ? '#e5566f' : active ? (isBright ? '#1d5fbf' : '#4a8ad6') : e.classification === 'inferred' ? '#3a3b40' : '#5a5c62'
         return {
           id: e.id,
           source: e.source,
@@ -123,7 +126,7 @@ function Explorer({ project }) {
           data: e,
         }
       }),
-    [graph.edges, highlight, selected],
+    [graph.edges, highlight, selected, isBright],
   )
 
   const fit = useCallback(() => flow.fitView({ padding: 0.15, duration: 400 }), [flow])
@@ -185,7 +188,6 @@ function Explorer({ project }) {
   return (
     <>
       <PageHeader
-        eyebrow="Architecture Explorer"
         title="Component graph"
         subtitle="Every node and edge comes from static analysis of the source. Click a node for evidence; edges point from a component to what it depends on."
         actions={
@@ -194,15 +196,14 @@ function Explorer({ project }) {
               variant="secondary"
               size="sm"
               onClick={() => setAuditModalOpen(true)}
-              className="gap-1.5 text-xs font-medium border-violet-500/30 text-violet-200 hover:bg-violet-500/10"
+              className="gap-1.5"
             >
-              <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+              <Sparkles className="h-3.5 w-3.5 text-faint" />
               Visual Diagram Audit
             </Button>
-            <div className="flex rounded-lg border border-white/[0.07] bg-ink-850 p-0.5">
+            <div className="flex rounded-control border border-edge bg-surface p-0.5">
               {[['graph', Network, 'Graph'], ['table', Table2, 'Table']].map(([v, Icon, label]) => (
-                <button key={v} onClick={() => setView(v)} className={`relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium ${view === v ? 'text-ink-100' : 'text-ink-400'}`} aria-pressed={view === v}>
-                  {view === v && <motion.span layoutId="arch-view" className="absolute inset-0 rounded-md bg-ink-700" />}
+                <button key={v} onClick={() => setView(v)} className={`relative flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${view === v ? 'bg-raised text-ink' : 'text-faint hover:text-muted'}`} aria-pressed={view === v}>
                   <Icon className="relative h-3.5 w-3.5" /> <span className="relative">{label}</span>
                 </button>
               ))}
@@ -213,7 +214,7 @@ function Explorer({ project }) {
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1 sm:max-w-sm">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
           <input
             value={query}
             onChange={(e) => {
@@ -223,10 +224,10 @@ function Explorer({ project }) {
             }}
             placeholder="Search components, files…"
             aria-label="Search components"
-            className="h-9 w-full rounded-lg border border-ink-600 bg-ink-900 pl-9 pr-8 text-sm text-ink-100 outline-none focus:border-violet-400"
+            className="h-9 w-full rounded-control border border-control bg-surface pl-9 pr-8 text-sm text-ink outline-none focus:border-accent"
           />
           {query && (
-            <button aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-400" onClick={() => setQuery('')}>
+            <button aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 text-faint" onClick={() => setQuery('')}>
               <X className="h-4 w-4" />
             </button>
           )}
@@ -246,23 +247,23 @@ function Explorer({ project }) {
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <Card className="mb-3 space-y-3 p-3">
               <div>
-                <div className="mb-1.5 text-[11px] uppercase tracking-wider text-ink-400">Component types</div>
+                <div className="mb-1.5 text-xs text-muted">Component types</div>
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(NODE_TYPES).filter(([k]) => counts[k]).map(([k, t]) => (
                     <button key={k} onClick={() => toggle(types, setTypes, k)} aria-pressed={types.has(k)}
-                      className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${types.has(k) ? 'border-white/15 bg-ink-700 text-ink-100' : 'border-white/[0.05] text-ink-500'}`}>
+                      className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors ${types.has(k) ? 'border-control bg-raised text-ink' : 'border-edge text-faint hover:text-muted'}`}>
                       <span className="h-2 w-2 rounded-full" style={{ background: t.color, opacity: types.has(k) ? 1 : 0.3 }} />
-                      {t.label} <span className="text-ink-400">{counts[k]}</span>
+                      {t.label} <span className="num text-faint">{counts[k]}</span>
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <div className="mb-1.5 text-[11px] uppercase tracking-wider text-ink-400">Relationship types</div>
+                <div className="mb-1.5 text-xs text-muted">Relationship types</div>
                 <div className="flex flex-wrap gap-1.5">
                   {Object.keys(EDGE_LABELS).map((k) => (
                     <button key={k} onClick={() => toggle(edgeTypes, setEdgeTypes, k)} aria-pressed={edgeTypes.has(k)}
-                      className={`rounded-md border px-2 py-1 text-xs ${edgeTypes.has(k) ? 'border-white/15 bg-ink-700 text-ink-100' : 'border-white/[0.05] text-ink-500'}`}>
+                      className={`rounded-full border px-2.5 py-1 text-xs ${edgeTypes.has(k) ? 'border-control bg-raised text-ink' : 'border-edge text-faint hover:text-muted'}`}>
                       {EDGE_LABELS[k]}
                     </button>
                   ))}
@@ -275,8 +276,8 @@ function Explorer({ project }) {
 
       <AnimatePresence>
         {highlight.label && (
-          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-rose-400/20 bg-rose-500/[0.06] px-3 py-2 text-sm text-rose-100">
-            <span className="flex items-center gap-2"><Zap className="h-4 w-4" /> {highlight.label}</span>
+          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mb-3 flex items-center justify-between gap-2 rounded-card border border-negative/25 bg-negative-bg px-3 py-2 text-sm text-ink">
+            <span className="flex items-center gap-2"><Zap className="h-4 w-4 text-negative" /> {highlight.label}</span>
             <IconButton icon={X} label="Clear highlight" onClick={() => { setBlastOf(null); setQuery(''); if (predictionId) setParams({}) }} />
           </motion.div>
         )}
@@ -287,7 +288,7 @@ function Explorer({ project }) {
       ) : view === 'graph' ? (
         <Card className="relative h-[calc(100vh-17rem)] min-h-[520px] overflow-hidden">
           {rfNodes.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-ink-400">No components match the current filters.</div>
+            <div className="flex h-full items-center justify-center text-sm text-faint">No components match the current filters.</div>
           ) : (
             <ReactFlow
               nodes={rfNodes}
@@ -303,9 +304,9 @@ function Explorer({ project }) {
               proOptions={{ hideAttribution: true }}
               fitView
             >
-              <Background color="#1b1e29" gap={22} />
+              <Background color={isBright ? '#e0e2e6' : '#232326'} gap={22} />
               <Controls showInteractive={false} position="bottom-left" />
-              <MiniMap pannable zoomable nodeColor={(n) => NODE_TYPES[n.data.type]?.color || '#555'} maskColor="rgba(7,8,11,0.7)" className="!hidden md:!block" />
+              <MiniMap pannable zoomable nodeColor={(n) => NODE_TYPES[n.data.type]?.color || '#555'} maskColor={isBright ? 'rgba(255,255,255,0.7)' : 'rgba(19,18,23,0.7)'} className="!hidden md:!block" />
             </ReactFlow>
           )}
           <Legend />
@@ -325,7 +326,7 @@ function Explorer({ project }) {
       <Modal open={Boolean(edge)} onClose={() => setEdge(null)} title={edge ? `${EDGE_LABELS[edge.type] || edge.type}` : ''} subtitle={edge ? `${shortId(edge.source)} → ${shortId(edge.target)}` : ''}>
         {edge && (
           <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-ink-300">
+            <div className="flex items-center gap-2 text-sm text-muted">
               Evidence classification: <EvidenceBadge classification={edge.classification} />
             </div>
             <EvidenceList evidence={edge.evidence} />
@@ -344,25 +345,25 @@ function Explorer({ project }) {
 function Legend() {
   const [open, setOpen] = useState(true)
   return (
-    <div className="absolute right-3 top-3 z-10 w-48 rounded-lg border border-white/10 bg-ink-900/90 text-xs backdrop-blur">
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between px-3 py-2 font-medium text-ink-200" aria-expanded={open}>
-        <span className="flex items-center gap-1.5"><LayoutGrid className="h-3.5 w-3.5" /> Legend</span>
-        <span className="text-ink-400">{open ? '–' : '+'}</span>
+    <div className="absolute right-3 top-3 z-10 w-48 rounded-card border border-edge bg-surface text-xs shadow-[0_12px_28px_rgba(0,0,0,0.2)]">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between px-3 py-2 font-medium text-ink" aria-expanded={open}>
+        <span className="flex items-center gap-1.5"><LayoutGrid className="h-3.5 w-3.5 text-faint" /> Legend</span>
+        <span className="text-faint">{open ? '–' : '+'}</span>
       </button>
       <AnimatePresence initial={false}>
         {open && (
           <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
             <ul className="space-y-1 px-3 pb-2">
               {Object.entries(NODE_TYPES).filter(([k]) => k !== 'module').map(([k, t]) => (
-                <li key={k} className="flex items-center gap-2 text-ink-300"><t.icon className="h-3 w-3" style={{ color: t.color }} /> {t.label}</li>
+                <li key={k} className="flex items-center gap-2 text-muted"><t.icon className="h-3 w-3" style={{ color: t.color }} /> {t.label}</li>
               ))}
             </ul>
-            <div className="space-y-1 border-t border-white/[0.06] px-3 py-2 text-ink-300">
-              <div className="flex items-center gap-2"><span className="h-px w-5 bg-[#6b7190]" /> confirmed edge</div>
-              <div className="flex items-center gap-2"><span className="w-5 border-t border-dashed border-[#6b7190]" /> inferred edge</div>
-              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-sm bg-violet-400" /> depends on selection</div>
-              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-sm bg-cyan-400" /> selection depends on</div>
-              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-sm bg-rose-400" /> failure impact</div>
+            <div className="space-y-1 border-t border-rule px-3 py-2 text-muted">
+              <div className="flex items-center gap-2"><span className="h-px w-5 bg-faint" /> confirmed edge</div>
+              <div className="flex items-center gap-2"><span className="w-5 border-t border-dashed border-faint" /> inferred edge</div>
+              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-sm bg-accent" /> depends on selection</div>
+              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-sm bg-muted" /> selection depends on</div>
+              <div className="flex items-center gap-2"><span className="h-2 w-2 rounded-sm bg-negative" /> failure impact</div>
             </div>
           </motion.div>
         )}
@@ -381,30 +382,30 @@ function ComponentTable({ components, matches, onSelect }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wider text-ink-400">
+            <tr className="border-b border-edge text-left text-xs text-muted">
               {[['name', 'Component'], [null, 'Type'], [null, 'Location'], ['criticality', 'Criticality'], ['dependents', 'Dependents'], ['routes_depending', 'Routes'], ['tests_covering', 'Tests']].map(([key, label]) => (
-                <th key={label} className="px-4 py-2.5 font-medium">
-                  {key ? <button onClick={() => setSort(key)} className={sort === key ? 'text-violet-200' : 'hover:text-ink-200'}>{label}{sort === key ? ' ↓' : ''}</button> : label}
+                <th key={label} className="px-4 py-2.5 font-normal">
+                  {key ? <button onClick={() => setSort(key)} className={sort === key ? 'text-ink' : 'hover:text-ink'}>{label}{sort === key ? ' ↓' : ''}</button> : label}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {rows.map((c) => (
-              <tr key={c.id} onClick={() => onSelect(c.id)} className="cursor-pointer border-b border-white/[0.03] hover:bg-ink-700/30">
-                <td className="max-w-xs truncate px-4 py-2 font-mono text-xs text-ink-100">{shortId(c.id)}</td>
+              <tr key={c.id} onClick={() => onSelect(c.id)} className="cursor-pointer border-b border-rule hover:bg-raised">
+                <td className="num max-w-xs truncate px-4 py-2 text-xs text-ink">{shortId(c.id)}</td>
                 <td className="px-4 py-2"><TypeBadge type={c.type} /></td>
-                <td className="px-4 py-2 font-mono text-xs text-ink-400">{c.file ? `${c.file}:${c.line}` : '—'}</td>
-                <td className="px-4 py-2 tabular-nums">{c.type === 'test' ? '—' : c.metrics?.criticality}</td>
-                <td className="px-4 py-2 tabular-nums">{c.metrics?.dependents}</td>
-                <td className="px-4 py-2 tabular-nums">{c.metrics?.routes_depending}</td>
-                <td className="px-4 py-2 tabular-nums">{c.metrics?.tests_covering}</td>
+                <td className="num px-4 py-2 text-xs text-faint">{c.file ? `${c.file}:${c.line}` : '—'}</td>
+                <td className="num px-4 py-2">{c.type === 'test' ? '—' : c.metrics?.criticality}</td>
+                <td className="num px-4 py-2">{c.metrics?.dependents}</td>
+                <td className="num px-4 py-2">{c.metrics?.routes_depending}</td>
+                <td className="num px-4 py-2">{c.metrics?.tests_covering}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <div className="border-t border-white/[0.05] px-4 py-2 text-xs text-ink-400">
+      <div className="border-t border-rule px-4 py-2 text-xs text-faint">
         <Badge>{rows.length}</Badge> components shown
       </div>
     </Card>

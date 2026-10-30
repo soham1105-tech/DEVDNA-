@@ -1,5 +1,5 @@
 export { Button, IconButton } from './Button'
-export { Card, CardHeader, Stat, PageHeader } from './Card'
+export { Card, CardHeader, Stat, StatStrip, PageHeader } from './Card'
 export { Badge, SeverityBadge, StatusBadge, EvidenceBadge, TypeBadge, CertaintyBadge } from './Badge'
 export { Skeleton, SkeletonCards, Spinner, EmptyState, ErrorState, InlineNotice } from './Feedback'
 export { Modal, Drawer } from './Overlay'

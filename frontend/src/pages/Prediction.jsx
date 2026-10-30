@@ -56,7 +56,6 @@ function PredictionPage({ project }) {
   return (
     <>
       <PageHeader
-        eyebrow="Failure Prediction"
         title="What breaks if this fails?"
         subtitle="Affected components are computed deterministically from the graph. Gemma then explains the mechanism, assumptions and mitigations from cited evidence."
       />
@@ -76,16 +75,16 @@ function PredictionPage({ project }) {
           </Card>
           <Card>
             <CardHeader title="Previous predictions" icon={History} />
-            <ul className="max-h-72 divide-y divide-white/[0.04] overflow-y-auto">
+            <ul className="max-h-72 divide-y divide-rule overflow-y-auto">
               {(history.data || []).map((p) => (
                 <li key={p.id}>
-                  <button onClick={() => { setPrediction(p); setParams({ id: p.id }) }} className={`w-full px-4 py-2.5 text-left hover:bg-ink-700/30 ${prediction?.id === p.id ? 'bg-violet-500/5' : ''}`}>
-                    <div className="truncate text-sm text-ink-100">{p.impact.scenario_label}: {shortId(p.target_id)}</div>
-                    <div className="text-xs text-ink-400">{p.impact.summary.definite} definite · {timeAgo(p.created_at)}{p.ai_explanation ? ' · explained by Gemma' : ''}</div>
+                  <button onClick={() => { setPrediction(p); setParams({ id: p.id }) }} className={`w-full px-4 py-2.5 text-left hover:bg-raised ${prediction?.id === p.id ? 'bg-accent/10' : ''}`}>
+                    <div className="truncate text-sm text-ink">{p.impact.scenario_label}: {shortId(p.target_id)}</div>
+                    <div className="text-xs text-faint">{p.impact.summary.definite} definite · {timeAgo(p.created_at)}{p.ai_explanation ? ' · explained by Gemma' : ''}</div>
                   </button>
                 </li>
               ))}
-              {history.data?.length === 0 && <li className="p-4 text-sm text-ink-400">No predictions yet.</li>}
+              {history.data?.length === 0 && <li className="p-4 text-sm text-faint">No predictions yet.</li>}
             </ul>
           </Card>
         </div>
@@ -97,9 +96,9 @@ function PredictionPage({ project }) {
             <motion.div key={prediction.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
               <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div>
-                  <div className="text-xs uppercase tracking-wider text-violet-300/80">Prediction only · not yet validated</div>
-                  <div className="mt-0.5 text-base font-semibold text-ink-100">{prediction.impact.scenario_label} → {prediction.impact.target.name}</div>
-                  <div className="text-xs text-ink-400">{prediction.impact.fault_description}</div>
+                  <div className="text-xs text-warning">Prediction only · not yet validated</div>
+                  <div className="mt-0.5 text-base font-semibold text-ink">{prediction.impact.scenario_label} → {prediction.impact.target.name}</div>
+                  <div className="text-xs text-faint">{prediction.impact.fault_description}</div>
                 </div>
                 <Link to={`/lab?prediction=${prediction.id}`}>
                   <Button variant="cyan" icon={Beaker}>Validate in What-If Lab</Button>

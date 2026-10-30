@@ -2,8 +2,9 @@ import { motion } from 'framer-motion'
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from './Button'
 
+/** Loading keeps the final layout: a flat bar at the value's real size, no shimmer. */
 export function Skeleton({ className = '' }) {
-  return <div className={`animate-pulse rounded-md bg-ink-700/60 ${className}`} />
+  return <div className={`animate-pulse rounded-md bg-raised ${className}`} />
 }
 
 export function SkeletonCards({ count = 4, className = 'h-24' }) {
@@ -18,8 +19,8 @@ export function SkeletonCards({ count = 4, className = 'h-24' }) {
 
 export function Spinner({ label }) {
   return (
-    <div className="flex items-center gap-2 text-sm text-ink-300">
-      <Loader2 className="h-4 w-4 animate-spin text-violet-300" />
+    <div className="flex items-center gap-2 text-sm text-muted">
+      <Loader2 className="h-4 w-4 animate-spin text-accent" />
       {label}
     </div>
   )
@@ -27,14 +28,10 @@ export function Spinner({ label }) {
 
 export function EmptyState({ icon: Icon, title, description, action }) {
   return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center justify-center rounded-xl border border-dashed border-ink-600 bg-ink-900/40 px-6 py-12 text-center">
-      {Icon && (
-        <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/15 to-cyan-400/10 text-violet-200 ring-1 ring-white/10">
-          <Icon className="h-5 w-5" />
-        </div>
-      )}
-      <h3 className="text-sm font-semibold text-ink-100">{title}</h3>
-      {description && <p className="mt-1 max-w-md text-sm text-ink-300">{description}</p>}
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center justify-center rounded-card border border-dashed border-control bg-surface px-6 py-12 text-center">
+      {Icon && <Icon className="mb-3 h-5 w-5 text-faint" />}
+      <h3 className="text-sm font-semibold text-ink">{title}</h3>
+      {description && <p className="mt-1 max-w-md text-sm text-muted">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </motion.div>
   )
@@ -42,13 +39,13 @@ export function EmptyState({ icon: Icon, title, description, action }) {
 
 export function ErrorState({ error, onRetry, title = 'Something went wrong' }) {
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} role="alert" className="flex items-start gap-3 rounded-xl border border-rose-500/25 bg-rose-500/[0.06] p-4">
-      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} role="alert" className="flex items-start gap-3 rounded-card border border-negative/25 bg-negative-bg p-4">
+      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-negative" />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-rose-100">{title}</div>
-        <div className="mt-0.5 text-sm text-rose-200/80">{error?.message || String(error)}</div>
+        <div className="text-sm font-medium text-ink">{title}</div>
+        <div className="mt-0.5 text-sm text-muted">{error?.message || String(error)}</div>
         {error?.fields?.length > 0 && (
-          <ul className="mt-1 text-xs text-rose-200/70">
+          <ul className="mt-1 text-xs text-muted">
             {error.fields.map((f) => (
               <li key={f.field}>{f.field}: {f.message}</li>
             ))}
@@ -66,13 +63,13 @@ export function ErrorState({ error, onRetry, title = 'Something went wrong' }) {
 
 export function InlineNotice({ tone = 'info', icon: Icon, children }) {
   const cls = {
-    info: 'border-cyan-400/20 bg-cyan-400/[0.05] text-cyan-100/90',
-    warn: 'border-amber-400/25 bg-amber-400/[0.06] text-amber-100/90',
-    violet: 'border-violet-400/25 bg-violet-400/[0.06] text-violet-100/90',
+    info: 'border-accent/30 bg-accent/10 text-ink',
+    warn: 'border-warning/30 bg-warning-bg text-ink',
+    violet: 'border-accent/30 bg-accent/10 text-ink', // legacy tone name kept for callers
   }[tone]
   return (
-    <div className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm ${cls}`}>
-      {Icon && <Icon className="mt-0.5 h-4 w-4 shrink-0" />}
+    <div className={`flex items-start gap-2.5 rounded-card border px-3 py-2.5 text-sm ${cls}`}>
+      {Icon && <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted" />}
       <div className="min-w-0">{children}</div>
     </div>
   )

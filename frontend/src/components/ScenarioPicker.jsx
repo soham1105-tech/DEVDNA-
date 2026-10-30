@@ -19,27 +19,29 @@ export default function ScenarioPicker({ scenarios, scenario, target, onScenario
               disabled={!s.supported}
               onClick={() => onScenario(s.id)}
               aria-pressed={active}
-              className={`relative rounded-xl border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${active ? 'border-violet-400/50 bg-violet-500/10' : 'border-white/[0.07] bg-ink-900/50 hover:border-white/15'}`}
+              className={`relative rounded-card border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${active ? 'border-accent bg-accent/10' : 'border-edge bg-ground hover:border-control'}`}
             >
+              {/* Selection mark: the 1px accent line on the card's left edge. */}
+              {active && <span className="absolute inset-y-2 left-0 w-px bg-accent" aria-hidden />}
               <div className="flex items-center gap-2">
-                <Icon className={`h-4 w-4 ${active ? 'text-violet-200' : 'text-ink-300'}`} />
-                <span className="text-sm font-medium text-ink-100">{s.label}</span>
+                <Icon className={`h-4 w-4 ${active ? 'text-accent' : 'text-faint'}`} />
+                <span className="text-sm font-medium text-ink">{s.label}</span>
               </div>
-              <p className="mt-1 text-xs text-ink-400">{s.supported ? s.fault : `No ${s.target_types.join('/')} component discovered in this project.`}</p>
+              <p className="mt-1 text-xs text-faint">{s.supported ? s.fault : `No ${s.target_types.join('/')} component discovered in this project.`}</p>
             </motion.button>
           )
         })}
       </div>
       {current && (
         <div>
-          <label htmlFor="target" className="text-xs font-medium uppercase tracking-wider text-ink-400">
+          <label htmlFor="target" className="text-xs font-medium text-muted">
             Target component
           </label>
           <select
             id="target"
             value={target || ''}
             onChange={(e) => onTarget(e.target.value)}
-            className="mt-1.5 w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-ink-100 outline-none focus:border-violet-400"
+            className="mt-1.5 w-full rounded-control border border-control bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-accent"
           >
             <option value="" disabled>Select a discovered component…</option>
             {current.targets.map((t) => (

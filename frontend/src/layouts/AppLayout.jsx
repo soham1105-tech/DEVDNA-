@@ -7,6 +7,7 @@ import { NavLink, useLocation, useOutlet } from 'react-router-dom'
 import { page } from '../animations/variants'
 import ChatDrawer from '../components/ChatDrawer'
 import NewProjectModal from '../components/NewProjectModal'
+import { IconButton } from '../components/ui'
 import { useProject } from '../hooks/useProject'
 import { useSettings } from '../hooks/useSettings'
 import { useStatus } from '../hooks/useStatus'
@@ -32,7 +33,7 @@ export function ThemeToggle({ className = '' }) {
       onClick={toggleTheme}
       aria-label={isBright ? 'Switch to Dark mode' : 'Switch to Bright mode'}
       title={isBright ? 'Switch to Dark mode (Ctrl+Shift+D)' : 'Switch to Bright mode (Ctrl+Shift+D)'}
-      className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-ink-800 text-ink-300 transition-colors hover:border-violet-400/30 hover:bg-ink-700 hover:text-ink-100 ${className}`}
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-control border border-control text-muted transition-colors hover:border-faint hover:text-ink ${className}`}
     >
       <motion.div
         key={isBright ? 'sun' : 'moon'}
@@ -41,11 +42,7 @@ export function ThemeToggle({ className = '' }) {
         exit={{ rotate: 45, scale: 0.5, opacity: 0 }}
         transition={{ duration: 0.2 }}
       >
-        {isBright ? (
-          <Sun className="h-4 w-4 text-amber-500" />
-        ) : (
-          <Moon className="h-4 w-4 text-violet-300" />
-        )}
+        {isBright ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </motion.div>
     </button>
   )
@@ -54,44 +51,39 @@ export function ThemeToggle({ className = '' }) {
 function Logo() {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500/30 to-cyan-400/20 ring-1 ring-white/10">
-        <svg viewBox="0 0 32 32" className="h-5 w-5" aria-hidden>
-          <path d="M10 5c0 7 12 7 12 14s-12 0-12 8M22 5c0 7-12 7-12 14s12 0 12 8" fill="none" stroke="#c4b5fd" strokeWidth="2.4" strokeLinecap="round" />
-          <path d="M12 11h8M12 21h8" stroke="#67e8f9" strokeWidth="2.2" strokeLinecap="round" />
-        </svg>
-      </div>
-      <div>
-        <div className="text-sm font-semibold tracking-tight text-ink-100">DevDNA</div>
-        <div className="text-[10px] uppercase tracking-[0.16em] text-ink-400">digital twin</div>
-      </div>
+      <svg viewBox="0 0 32 32" className="h-7 w-7" aria-hidden>
+        <path d="M11 4c0 8 10 8 10 12s-10 4-10 12M21 4c0 8-10 8-10 12s10 4 10 12" fill="none" stroke="var(--color-accent)" strokeWidth="2.2" strokeLinecap="round" />
+        <path d="M13 10h6M13 22h6" stroke="var(--color-ink)" strokeWidth="1.6" strokeLinecap="round" opacity="0.7" />
+      </svg>
+      <div className="text-sm font-semibold tracking-tight text-ink">DevDNA</div>
     </div>
   )
 }
 
 function StatusIndicator() {
   const { backend, ai } = useStatus()
-  const backendDot = backend === 'online' ? 'bg-emerald-400' : backend === 'offline' ? 'bg-rose-400' : 'bg-amber-300'
+  const backendDot = backend === 'online' ? 'bg-positive' : backend === 'offline' ? 'bg-negative' : 'bg-warning'
   const aiOk = ai?.configured && ai?.last_check?.available !== false
-  const aiDot = !ai ? 'bg-ink-500' : aiOk ? 'bg-violet-400' : ai.configured ? 'bg-amber-300' : 'bg-ink-500'
+  const aiDot = !ai ? 'bg-control' : aiOk ? 'bg-accent' : ai.configured ? 'bg-warning' : 'bg-control'
   return (
-    <NavLink to="/settings" className="block rounded-lg border border-white/[0.06] bg-ink-900/60 p-3 text-xs transition-colors hover:border-white/10">
+    <NavLink to="/settings" className="block rounded-card border border-edge bg-surface p-3 text-xs transition-colors hover:border-control">
       <div className="flex items-center justify-between">
-        <span className="text-ink-300">Backend</span>
-        <span className="flex items-center gap-1.5 text-ink-200">
-          <span className={`h-1.5 w-1.5 rounded-full ${backendDot} ${backend === 'online' ? 'shadow-[0_0_8px_rgba(52,211,153,0.8)]' : ''}`} />
+        <span className="text-muted">Backend</span>
+        <span className="flex items-center gap-1.5 text-ink">
+          <span className={`h-1.5 w-1.5 rounded-full ${backendDot}`} />
           {backend}
         </span>
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2">
-        <span className="text-ink-300">Gemma</span>
-        <span className="flex min-w-0 items-center gap-1.5 text-ink-200">
+        <span className="text-muted">Gemma</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-ink">
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${aiDot}`} />
           <span className="truncate">{!ai ? '—' : ai.configured ? (ai.last_check?.available === false ? 'unavailable' : 'configured') : 'not configured'}</span>
         </span>
       </div>
-      {ai?.model && <div className="mt-1 truncate font-mono text-[10px] text-ink-400">{ai.model}</div>}
+      {ai?.model && <div className="num mt-1 truncate text-[11px] text-faint">{ai.model}</div>}
       {ai?.last_request && (
-        <div className="mt-0.5 truncate text-[10px] text-ink-400">last request: {ai.last_request.status}</div>
+        <div className="mt-0.5 truncate text-[11px] text-faint">last request: {ai.last_request.status}</div>
       )}
     </NavLink>
   )
@@ -112,14 +104,14 @@ function ProjectSelector({ onNew }) {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/[0.07] bg-ink-800 px-3 py-2 text-left text-sm transition-colors hover:border-white/15"
+        className="flex w-full items-center justify-between gap-2 rounded-card border border-edge bg-surface px-3 py-2 text-left text-sm transition-colors hover:border-control"
       >
         <div className="min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-ink-400">Project</div>
-          <div className="truncate text-ink-100">{current?.name || 'No project yet'}</div>
+          <div className="text-xs text-faint">Project</div>
+          <div className="truncate text-ink">{current?.name || 'No project yet'}</div>
         </div>
         <motion.span animate={{ rotate: open ? 180 : 0 }}>
-          <ChevronDown className="h-4 w-4 text-ink-400" />
+          <ChevronDown className="h-4 w-4 text-faint" />
         </motion.span>
       </button>
       <AnimatePresence>
@@ -129,7 +121,7 @@ function ProjectSelector({ onNew }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.14 }}
-            className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-lg border border-white/10 bg-ink-800 shadow-xl"
+            className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-card border border-edge bg-surface shadow-[0_12px_28px_rgba(0,0,0,0.2)]"
             role="listbox"
           >
             <div className="max-h-64 overflow-y-auto py-1">
@@ -142,10 +134,10 @@ function ProjectSelector({ onNew }) {
                     setCurrentId(p.id)
                     setOpen(false)
                   }}
-                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-ink-700 ${p.id === current?.id ? 'text-violet-200' : 'text-ink-200'}`}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-raised ${p.id === current?.id ? 'text-ink' : 'text-muted'}`}
                 >
                   <span className="truncate">{p.name}</span>
-                  <span className="ml-2 shrink-0 text-[10px] uppercase text-ink-400">{p.source_type}</span>
+                  <span className="ml-2 shrink-0 text-[11px] text-faint">{p.source_type}</span>
                 </button>
               ))}
             </div>
@@ -154,12 +146,12 @@ function ProjectSelector({ onNew }) {
                 setOpen(false)
                 onNew()
               }}
-              className="flex w-full items-center justify-between border-t border-white/[0.06] px-3 py-2 text-sm text-cyan-200 hover:bg-ink-700"
+              className="flex w-full items-center justify-between border-t border-rule px-3 py-2 text-sm text-accent hover:bg-raised"
             >
               <span className="flex items-center gap-2">
                 <Plus className="h-4 w-4" /> New project
               </span>
-              <kbd className="rounded border border-cyan-400/30 bg-ink-900/60 px-1 py-0.5 font-mono text-[10px] text-cyan-300">⌘K</kbd>
+              <kbd className="num rounded border border-control px-1 py-0.5 text-[11px] text-faint">⌘K</kbd>
             </button>
           </motion.div>
         )}
@@ -174,12 +166,10 @@ function NavList({ onNavigate }) {
       {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
         <NavLink key={to} to={to} end={to === '/'} onClick={onNavigate} className="relative block">
           {({ isActive }) => (
-            <div className={`relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${isActive ? 'text-ink-100' : 'text-ink-300 hover:text-ink-100'}`}>
-              {isActive && (
-                <motion.div layoutId="nav-active" className="absolute inset-0 rounded-lg border border-violet-400/20 bg-violet-500/10" transition={{ type: 'spring', stiffness: 500, damping: 40 }} />
-              )}
-              {isActive && <motion.span layoutId="nav-bar" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-gradient-to-b from-violet-400 to-cyan-300" />}
-              <Icon className={`relative h-4 w-4 ${isActive ? 'text-violet-300' : ''}`} />
+            <div className={`relative flex items-center gap-2.5 rounded-card py-2 pl-4 pr-3 text-sm transition-colors ${isActive ? 'text-ink' : 'text-muted hover:text-ink'}`}>
+              {/* The selection mark: a 1px accent line on the sidebar's edge, as wide as the label. */}
+              {isActive && <motion.span layoutId="nav-active" className="absolute left-0 top-1.5 bottom-1.5 w-px bg-accent" transition={{ type: 'spring', stiffness: 500, damping: 40 }} />}
+              <Icon className={`relative h-4 w-4 ${isActive ? 'text-accent' : 'text-faint'}`} />
               <span className="relative">{label}</span>
             </div>
           )}
@@ -200,11 +190,17 @@ export default function AppLayout() {
 
   useEffect(() => setMobileNav(false), [location.pathname])
 
-  const sidebar = (
+  // Desktop sidebar row: logo + theme toggle. Mobile sheet swaps the toggle (already
+  // in the top bar) for a visible close button, so the two never overlap.
+  const makeSidebar = (mobile) => (
     <div className="flex h-full flex-col gap-5 p-4">
       <div className="flex items-center justify-between">
         <Logo />
-        <ThemeToggle />
+        {mobile ? (
+          <IconButton icon={X} label="Close navigation" onClick={() => setMobileNav(false)} />
+        ) : (
+          <ThemeToggle />
+        )}
       </div>
       <ProjectSelector onNew={() => setNewOpen(true)} />
       <NavList onNavigate={() => setMobileNav(false)} />
@@ -212,18 +208,19 @@ export default function AppLayout() {
         <button
           onClick={() => setChatOpen(true)}
           disabled={!ready}
-          className="flex w-full items-center justify-between rounded-lg border border-cyan-400/20 bg-cyan-400/[0.06] px-3 py-2 text-sm text-cyan-100 transition-colors hover:bg-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex w-full items-center justify-between rounded-card border border-edge bg-surface px-3 py-2 text-sm text-ink transition-colors hover:border-control disabled:cursor-not-allowed disabled:opacity-40"
           title={ready ? 'Ask questions about the analysed repository (Ctrl/Cmd+J)' : 'Analyse a project first'}
         >
           <span className="flex items-center gap-2">
-            <MessageSquareText className="h-4 w-4" /> Ask DevDNA
+            <MessageSquareText className="h-4 w-4 text-faint" /> Ask DevDNA
           </span>
-          <kbd className="hidden rounded border border-cyan-400/30 bg-ink-900/60 px-1.5 py-0.5 font-mono text-[10px] text-cyan-300 sm:inline-block">⌘J</kbd>
+          <kbd className="num hidden rounded border border-control px-1.5 py-0.5 text-[11px] text-faint sm:inline-block">⌘J</kbd>
         </button>
         <StatusIndicator />
       </div>
     </div>
   )
+  const sidebar = makeSidebar(false)
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -252,20 +249,17 @@ export default function AppLayout() {
 
   return (
     <div className="relative flex h-full">
-      <div className="grid-bg pointer-events-none fixed inset-0 opacity-60" />
-      <div className="pointer-events-none fixed -top-40 left-1/3 h-80 w-[40rem] rounded-full bg-violet-600/10 blur-3xl" />
-
-      <aside className="relative z-10 hidden w-64 shrink-0 border-r border-white/[0.06] bg-ink-900/80 backdrop-blur lg:block">{sidebar}</aside>
+      <aside className="relative z-10 hidden w-60 shrink-0 border-r border-edge bg-ground lg:block">{sidebar}</aside>
 
       {/* Mobile top bar + slide-in navigation */}
-      <div className="fixed inset-x-0 top-0 z-30 flex h-14 items-center justify-between border-b border-white/[0.06] bg-ink-900/90 px-4 backdrop-blur lg:hidden">
+      <div className="fixed inset-x-0 top-0 z-30 flex h-12 items-center justify-between border-b border-edge bg-ground px-4 lg:hidden">
         <Logo />
         <div className="flex items-center gap-1.5">
           <ThemeToggle />
-          <button aria-label="Ask DevDNA" disabled={!ready} onClick={() => setChatOpen(true)} className="rounded-lg p-2 text-cyan-200 disabled:opacity-40">
+          <button aria-label="Ask DevDNA" disabled={!ready} onClick={() => setChatOpen(true)} className="rounded-control p-2 text-muted disabled:opacity-40">
             <MessageSquareText className="h-5 w-5" />
           </button>
-          <button aria-label="Open navigation" onClick={() => setMobileNav(true)} className="rounded-lg p-2 text-ink-200">
+          <button aria-label="Open navigation" onClick={() => setMobileNav(true)} className="rounded-control p-2 text-ink">
             <Menu className="h-5 w-5" />
           </button>
         </div>
@@ -279,18 +273,15 @@ export default function AppLayout() {
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', stiffness: 400, damping: 40 }}
-              className="absolute left-0 top-0 h-full w-72 border-r border-white/10 bg-ink-900"
+              className="absolute left-0 top-0 h-full w-72 border-r border-edge bg-ground"
             >
-              <button aria-label="Close navigation" onClick={() => setMobileNav(false)} className="absolute right-3 top-4 rounded-lg p-1.5 text-ink-300">
-                <X className="h-4 w-4" />
-              </button>
-              {sidebar}
+              {makeSidebar(true)}
             </motion.aside>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <main className="relative z-10 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-14 lg:pt-0">
+      <main className="relative z-10 min-w-0 flex-1 overflow-x-hidden overflow-y-auto pt-12 lg:pt-0">
         <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           {/* Keyed entrance animation per page (no exit wait, so navigation can never stall) */}
           <motion.div key={location.pathname} variants={page} initial="initial" animate="animate">

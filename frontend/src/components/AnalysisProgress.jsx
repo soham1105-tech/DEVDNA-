@@ -21,9 +21,9 @@ export default function AnalysisProgress({ run, upload }) {
   const summary = run?.summary || {}
   return (
     <div>
-      {upload > 0 && upload < 1 && !run && <div className="mb-3 text-xs text-ink-300">Uploading… {Math.round(upload * 100)}%</div>}
-      <div className="h-1.5 overflow-hidden rounded-full bg-ink-700">
-        <motion.div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400" animate={{ width: `${Math.max(4, progress * 100)}%` }} transition={{ duration: 0.4 }} />
+      {upload > 0 && upload < 1 && !run && <div className="num mb-3 text-xs text-muted">Uploading… {Math.round(upload * 100)}%</div>}
+      <div className="h-1 overflow-hidden rounded-full bg-raised">
+        <motion.div className="h-full rounded-full bg-accent" animate={{ width: `${Math.max(4, progress * 100)}%` }} transition={{ duration: 0.4 }} />
       </div>
       <ul className="mt-4 space-y-1.5">
         {STAGES.map((stage, i) => {
@@ -38,10 +38,10 @@ export default function AnalysisProgress({ run, upload }) {
               transition={{ delay: i * 0.03 }}
               className="flex items-center gap-2.5 text-sm"
             >
-              <span className={`flex h-5 w-5 items-center justify-center rounded-full ${isDone ? 'bg-emerald-400/15 text-emerald-300' : active ? 'bg-violet-400/15 text-violet-200' : 'bg-ink-700 text-ink-500'}`}>
+              <span className={`flex h-5 w-5 items-center justify-center rounded-full border ${isDone ? 'border-positive/50 text-positive' : active ? 'border-accent text-accent' : 'border-control text-faint'}`}>
                 {isDone ? <Check className="h-3 w-3" /> : active ? <Loader2 className="h-3 w-3 animate-spin" /> : <span className="h-1 w-1 rounded-full bg-current" />}
               </span>
-              <span className={reached ? 'text-ink-100' : 'text-ink-400'}>{stage}</span>
+              <span className={reached ? 'text-ink' : 'text-faint'}>{stage}</span>
             </motion.li>
           )
         })}
@@ -54,9 +54,9 @@ export default function AnalysisProgress({ run, upload }) {
               ['Components', Object.values(summary.component_counts || {}).reduce((a, b) => a + b, 0)],
               ['Findings', summary.findings],
             ].map(([k, v]) => (
-              <div key={k} className="rounded-lg border border-white/[0.06] bg-ink-900/60 py-2">
-                <div className="text-lg font-semibold tabular-nums text-ink-100">{v}</div>
-                <div className="text-[11px] uppercase tracking-wider text-ink-400">{k}</div>
+              <div key={k} className="rounded-card border border-edge bg-ground py-2">
+                <div className="num text-lg font-medium text-ink">{v}</div>
+                <div className="text-[11px] text-faint">{k}</div>
               </div>
             ))}
           </motion.div>

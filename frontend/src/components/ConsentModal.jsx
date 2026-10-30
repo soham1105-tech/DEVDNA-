@@ -37,28 +37,28 @@ export default function ConsentModal({ open, preview, purpose, sessionOption, on
         </>
       }
     >
-      <p className="text-sm text-ink-300">
+      <p className="text-sm text-muted">
         DevDNA will send the {items.length} evidence items below ({preview?.evidence?.total_chars?.toLocaleString()} characters) to the Google
-        Gemini API to run <span className="font-mono text-ink-100">{preview?.model}</span>. Secrets are redacted and nothing else from your repository is sent.
+        Gemini API to run <span className="num text-ink">{preview?.model}</span>. Secrets are redacted and nothing else from your repository is sent.
       </p>
       <ul className="mt-4 space-y-1.5">
         {items.map((it) => (
-          <li key={it.ref} className="rounded-lg border border-white/[0.06] bg-ink-900/60">
+          <li key={it.ref} className="rounded-card border border-edge bg-ground">
             <button
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
               onClick={() => setExpanded(expanded === it.ref ? null : it.ref)}
               aria-expanded={expanded === it.ref}
             >
               <motion.span animate={{ rotate: expanded === it.ref ? 90 : 0 }}>
-                <ChevronRight className="h-3.5 w-3.5 text-ink-400" />
+                <ChevronRight className="h-3.5 w-3.5 text-faint" />
               </motion.span>
-              <Badge className="border-violet-400/25 bg-violet-400/10 font-mono text-violet-200">{it.ref}</Badge>
-              <span className="text-xs uppercase tracking-wide text-ink-400">{it.kind}</span>
-              <span className="truncate text-ink-200">{it.title}</span>
+              <Badge className="bg-accent/10 text-accent"><span className="num">{it.ref}</span></Badge>
+              <span className="text-xs text-faint">{it.kind}</span>
+              <span className="truncate text-muted">{it.title}</span>
             </button>
             <AnimatePresence initial={false}>
               {expanded === it.ref && (
-                <motion.pre variants={collapse} initial="initial" animate="animate" exit="exit" className="overflow-hidden whitespace-pre-wrap break-words border-t border-white/[0.05] px-3 py-2 font-mono text-[11px] leading-relaxed text-ink-300">
+                <motion.pre variants={collapse} initial="initial" animate="animate" exit="exit" className="num overflow-hidden whitespace-pre-wrap break-words border-t border-rule px-3 py-2 text-[11px] leading-relaxed text-muted">
                   {it.content}
                 </motion.pre>
               )}
@@ -66,13 +66,13 @@ export default function ConsentModal({ open, preview, purpose, sessionOption, on
           </li>
         ))}
       </ul>
-      <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-sm text-ink-200">
-        <input type="checkbox" className="mt-0.5 h-4 w-4 accent-violet-500" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+      <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-sm text-muted">
+        <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
         I agree to send this evidence to the Gemini API.
       </label>
       {sessionOption && (
-        <label className="mt-2 flex cursor-pointer items-start gap-2.5 text-sm text-ink-300">
-          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-violet-500" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+        <label className="mt-2 flex cursor-pointer items-start gap-2.5 text-sm text-muted">
+          <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
           Don&apos;t ask again until I close this tab.
         </label>
       )}

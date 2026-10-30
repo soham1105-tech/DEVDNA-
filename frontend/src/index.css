@@ -1,23 +1,73 @@
 @import "tailwindcss";
 
+/*
+  DevDNA design system — "data terminal".
+  One ground, one ink, one accent. Colour goes on data and status, never on chrome.
+  Every selection is a 1px accent line on the nearest existing edge.
+  Figures are set in JetBrains Mono with tabular numerals; text in Public Sans.
+  The bright theme re-points the same custom properties; components never branch on theme.
+*/
+
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  --color-ink-950: #07080b;
-  --color-ink-900: #0b0c11;
-  --color-ink-850: #0f1117;
-  --color-ink-800: #13151d;
-  --color-ink-700: #1b1e29;
-  --color-ink-600: #262a38;
-  --color-ink-500: #3a3f52;
-  --color-ink-400: #5d6378;
-  --color-ink-300: #8c92a8;
-  --color-ink-200: #b8bdcf;
-  --color-ink-100: #e3e6ef;
+  /* Dark instrument theme (default) */
+  --color-ground: #171719;
+  --color-surface: #131217;
+  --color-raised: #212023;
+  --color-well: #0f0e11;
+  --color-edge: #232326;
+  --color-rule: #1b1a1f;
+  --color-control: #3a3a3e;
+  --color-ink: #f4f4f5;
+  --color-muted: #b4b7bd;
+  --color-faint: #8f9196;
 
-  --color-violet-glow: #8b5cf6;
-  --color-cyan-glow: #22d3ee;
+  --color-accent: #4a8ad6;
+  --color-accent-ink: #ffffff;
+  --color-positive: #44a282;
+  --color-positive-bg: #1b2828;
+  --color-positive-ink: #5fc39c;
+  --color-negative: #e5566f;
+  --color-negative-bg: #2c1a20;
+  --color-negative-ink: #e5566f;
+  --color-warning: #d9a441;
+  --color-warning-bg: #2a2416;
+  --color-warning-ink: #d9a441;
+  --color-neutral-bg: #212023;
+  --color-neutral-ink: #b4b7bd;
+
+  --radius-card: 6px;
+  --radius-control: 999px;
+}
+
+/* Bright theme: same roles, study light values. */
+html[data-theme="bright"] {
+  --color-ground: #f6f7f8;
+  --color-surface: #ffffff;
+  --color-raised: #f1f2f3;
+  --color-well: #f6f7f8;
+  --color-edge: #e4e5e8;
+  --color-rule: #eef0f1;
+  --color-control: #d1d5db;
+  --color-ink: #111213;
+  --color-muted: #5f6368;
+  --color-faint: #6b6d72;
+
+  --color-accent: #1d5fbf;
+  --color-accent-ink: #ffffff;
+  --color-positive: #247b50;
+  --color-positive-bg: #dcfae5;
+  --color-positive-ink: #04250e;
+  --color-negative: #c4242a;
+  --color-negative-bg: #ffedea;
+  --color-negative-ink: #831c1e;
+  --color-warning: #92400e;
+  --color-warning-bg: #fffbeb;
+  --color-warning-ink: #92400e;
+  --color-neutral-bg: #f1f1f2;
+  --color-neutral-ink: #5f6368;
 }
 
 html,
@@ -27,50 +77,39 @@ body,
 }
 
 body {
-  background: var(--color-ink-950);
-  color: var(--color-ink-100);
+  background: var(--color-ground);
+  color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: rgba(139, 92, 246, 0.35);
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
-/* Subtle animated grid behind the app. Disabled for reduced motion. */
-.grid-bg {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: 44px 44px;
-  animation: grid-drift 40s linear infinite;
-}
-@keyframes grid-drift {
-  from { background-position: 0 0, 0 0; }
-  to { background-position: 44px 44px, 44px 44px; }
-}
-.glow-violet { box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.25), 0 8px 40px -12px rgba(139, 92, 246, 0.45); }
-.glow-cyan { box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.25), 0 8px 40px -12px rgba(34, 211, 238, 0.4); }
-
-.glass {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015));
-  backdrop-filter: blur(12px);
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .grid-bg { animation: none; }
+/* Figures and anything that updates align digit for digit. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
-html[data-motion="reduced"] .grid-bg { animation: none; }
 
 /* Scrollbars */
-* { scrollbar-width: thin; scrollbar-color: var(--color-ink-600) transparent; }
+* { scrollbar-width: thin; scrollbar-color: var(--color-control) transparent; }
 
-/* React Flow dark theme tweaks */
+/* React Flow chrome, drawn to the same tokens in both themes. */
 .react-flow { --xy-background-color: transparent; }
-.react-flow__controls { box-shadow: none !important; border: 1px solid var(--color-ink-600); border-radius: 10px; overflow: hidden; }
-.react-flow__controls-button { background: var(--color-ink-800) !important; border-bottom: 1px solid var(--color-ink-600) !important; color: var(--color-ink-200) !important; fill: var(--color-ink-200) !important; }
-.react-flow__controls-button:hover { background: var(--color-ink-700) !important; }
-.react-flow__minimap { background: var(--color-ink-900) !important; border: 1px solid var(--color-ink-600); border-radius: 10px; }
+.react-flow__controls { box-shadow: none !important; border: 1px solid var(--color-edge); border-radius: 8px; overflow: hidden; }
+.react-flow__controls-button { background: var(--color-surface) !important; border-bottom: 1px solid var(--color-edge) !important; color: var(--color-muted) !important; fill: var(--color-muted) !important; width: 26px !important; height: 26px !important; }
+.react-flow__controls-button:hover { background: var(--color-raised) !important; }
+.react-flow__minimap { background: var(--color-surface) !important; border: 1px solid var(--color-edge); border-radius: 8px; }
 .react-flow__edge-path { transition: stroke 0.2s, opacity 0.2s; }
 .react-flow__attribution { display: none; }
 
@@ -82,107 +121,8 @@ html[data-motion="reduced"] .edge-flow .react-flow__edge-path { animation: none;
 .prose-dna p { margin: 0.4rem 0; }
 .prose-dna ul { list-style: disc; padding-left: 1.2rem; margin: 0.4rem 0; }
 .prose-dna ol { list-style: decimal; padding-left: 1.2rem; margin: 0.4rem 0; }
-.prose-dna code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color-ink-700); padding: 0.1rem 0.35rem; border-radius: 4px; }
-.prose-dna pre { background: var(--color-ink-900); border: 1px solid var(--color-ink-600); padding: 0.6rem; border-radius: 8px; overflow-x: auto; }
+.prose-dna code { font-family: var(--font-mono); font-size: 0.85em; background: var(--color-raised); padding: 0.1rem 0.35rem; border-radius: 4px; }
+.prose-dna pre { background: var(--color-well); border: 1px solid var(--color-edge); padding: 0.6rem; border-radius: 6px; overflow-x: auto; }
 .prose-dna pre code { background: none; padding: 0; }
 .prose-dna h1, .prose-dna h2, .prose-dna h3 { font-weight: 600; margin: 0.6rem 0 0.3rem; }
-.prose-dna strong { color: var(--color-ink-100); }
-
-/* --- Bright Mode Overrides ------------------------------------------------ */
-html[data-theme="bright"],
-html.bright {
-  --color-ink-950: #f8fafc;
-  --color-ink-900: #ffffff;
-  --color-ink-850: #f1f5f9;
-  --color-ink-800: #e2e8f0;
-  --color-ink-700: #cbd5e1;
-  --color-ink-600: #94a3b8;
-  --color-ink-500: #64748b;
-  --color-ink-400: #475569;
-  --color-ink-300: #334155;
-  --color-ink-200: #1e293b;
-  --color-ink-100: #0f172a;
-}
-
-html[data-theme="bright"] body,
-html.bright body {
-  background: var(--color-ink-950);
-  color: var(--color-ink-100);
-}
-
-html[data-theme="bright"] .grid-bg,
-html.bright .grid-bg {
-  background-image:
-    linear-gradient(rgba(15, 23, 42, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
-}
-
-html[data-theme="bright"] .glass,
-html.bright .glass {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.65));
-  backdrop-filter: blur(12px);
-  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06);
-}
-
-html[data-theme="bright"] .border-white\/\[0\.05\],
-html[data-theme="bright"] .border-white\/\[0\.06\],
-html[data-theme="bright"] .border-white\/\[0\.07\],
-html[data-theme="bright"] .border-white\/10,
-html.bright .border-white\/\[0\.05\],
-html.bright .border-white\/\[0\.06\],
-html.bright .border-white\/\[0\.07\],
-html.bright .border-white\/10 {
-  border-color: rgba(15, 23, 42, 0.08) !important;
-}
-
-html[data-theme="bright"] .border-white\/15,
-html[data-theme="bright"] .border-white\/20,
-html.bright .border-white\/15,
-html.bright .border-white\/20 {
-  border-color: rgba(15, 23, 42, 0.14) !important;
-}
-
-html[data-theme="bright"] [class*="bg-ink-850"],
-html[data-theme="bright"] [class*="bg-ink-900"],
-html.bright [class*="bg-ink-850"],
-html.bright [class*="bg-ink-900"] {
-  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.05), 0 1px 2px -1px rgba(15, 23, 42, 0.05);
-}
-
-html[data-theme="bright"] .react-flow__controls,
-html.bright .react-flow__controls {
-  border-color: #cbd5e1;
-  background: #ffffff !important;
-}
-
-html[data-theme="bright"] .react-flow__controls-button,
-html.bright .react-flow__controls-button {
-  background: #ffffff !important;
-  border-bottom: 1px solid #cbd5e1 !important;
-  color: #1e293b !important;
-  fill: #1e293b !important;
-}
-
-html[data-theme="bright"] .react-flow__controls-button:hover,
-html.bright .react-flow__controls-button:hover {
-  background: #f1f5f9 !important;
-}
-
-html[data-theme="bright"] .react-flow__minimap,
-html.bright .react-flow__minimap {
-  background: #ffffff !important;
-  border-color: #cbd5e1;
-}
-
-html[data-theme="bright"] .prose-dna code,
-html.bright .prose-dna code {
-  background: #e2e8f0;
-  color: #0f172a;
-}
-
-html[data-theme="bright"] .prose-dna pre,
-html.bright .prose-dna pre {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-}
-
+.prose-dna strong { color: var(--color-ink); }

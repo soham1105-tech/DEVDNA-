@@ -21,7 +21,7 @@ function ExperimentsPage({ project }) {
 
   return (
     <>
-      <PageHeader eyebrow="Experiments" title="Experiment history" subtitle="Every executed experiment with its verdict, plus predictions that have not been validated yet."
+      <PageHeader title="Experiment history" subtitle="Every executed experiment with its verdict, plus predictions that have not been validated yet."
         actions={<Link to="/lab"><Button variant="primary" icon={Beaker}>New experiment</Button></Link>} />
       {(exps.loading && !exps.data) ? <Skeleton className="h-40" /> : exps.error ? <ErrorState error={exps.error} onRetry={exps.reload} /> : (
         <motion.div variants={stagger} initial="initial" animate="animate" className="space-y-4">
@@ -31,18 +31,18 @@ function ExperimentsPage({ project }) {
           {exps.data.length > 0 && (
             <Card>
               <CardHeader title="Executed and blocked experiments" icon={FlaskConical} />
-              <ul className="divide-y divide-white/[0.04]">
+              <ul className="divide-y divide-rule">
                 {exps.data.map((e) => (
                   <motion.li variants={item} key={e.id}>
-                    <Link to={`/experiments/${e.id}`} className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors hover:bg-ink-700/30">
+                    <Link to={`/experiments/${e.id}`} className="flex flex-wrap items-center gap-3 px-4 py-3 transition-colors hover:bg-raised">
                       <StatusBadge status={e.status} />
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm text-ink-100">{e.prediction?.impact?.scenario_label}: {shortId(e.prediction?.target_id || '')}</div>
-                        <div className="text-xs text-ink-400">
+                        <div className="truncate text-sm text-ink">{e.prediction?.impact?.scenario_label}: {shortId(e.prediction?.target_id || '')}</div>
+                        <div className="text-xs text-faint">
                           {e.mode || 'pending'} · accuracy {pct(e.comparison?.metrics?.accuracy)} · {timeAgo(e.created_at)}
                         </div>
                       </div>
-                      <ChevronRight className="h-4 w-4 text-ink-500" />
+                      <ChevronRight className="h-4 w-4 text-faint" />
                     </Link>
                   </motion.li>
                 ))}
@@ -52,13 +52,13 @@ function ExperimentsPage({ project }) {
           {untested.length > 0 && (
             <Card>
               <CardHeader title="Predictions not yet validated" subtitle="Status: Prediction only" />
-              <ul className="divide-y divide-white/[0.04]">
+              <ul className="divide-y divide-rule">
                 {untested.map((p) => (
                   <motion.li variants={item} key={p.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <StatusBadge status="prediction_only" />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm text-ink-100">{p.impact.scenario_label}: {shortId(p.target_id)}</div>
-                      <div className="text-xs text-ink-400">{p.impact.summary.tests_predicted_fail} tests predicted to fail · {timeAgo(p.created_at)}</div>
+                      <div className="truncate text-sm text-ink">{p.impact.scenario_label}: {shortId(p.target_id)}</div>
+                      <div className="text-xs text-faint">{p.impact.summary.tests_predicted_fail} tests predicted to fail · {timeAgo(p.created_at)}</div>
                     </div>
                     <Link to={`/lab?prediction=${p.id}`}><Button size="sm">Validate</Button></Link>
                   </motion.li>
