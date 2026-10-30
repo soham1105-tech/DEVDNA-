@@ -140,6 +140,8 @@ def analyze_entire_repo(
         "total_python_files": len(py_files),
         "analyzed_files": analyzed_count,
         "overall_architect_score": avg_score,
+        # Complexity heuristic (functions/classes/branches/depth), not AI
+        # detection: below the threshold means "review manually".
         "is_ai_flagged": avg_score < 35.0,
         "file_breakdown": file_results
     }

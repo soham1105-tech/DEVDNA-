@@ -49,5 +49,8 @@ def analyze_code_structure(raw_code: str):
     return {
         "ast_stats": stats,
         "human_architect_score": final_score,
-        "is_ai_generated_flag": final_score < 30.0
+        # The score is a structural complexity heuristic (functions, classes,
+        # branches, nesting depth), not AI detection: low values flag code for
+        # manual review only. Kept in sync with the < 35 threshold in main.py.
+        "is_ai_generated_flag": final_score < 35.0
     }
