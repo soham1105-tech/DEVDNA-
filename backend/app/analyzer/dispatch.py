@@ -17,6 +17,7 @@ changed files are re-parsed (see `cache.py`).
 from __future__ import annotations
 
 import logging
+import sys
 import time
 from pathlib import Path
 
@@ -26,6 +27,14 @@ from app.analyzer.js_analyzer import JS_LANGS, analyse_js_project
 from app.analyzer.python_analyzer import analyse_project
 
 log = logging.getLogger("devdna.analysis")
+
+# The analyzers recurse over source structure: the Python resolver walks one
+# frame per link in a construction/attribute chain, and `ast` accepts attribute
+# chains of unbounded length (paren nesting is capped by the parser, attribute
+# chains are not). CPython's default limit of 1000 frames is reachable with
+# real machine-generated code, so give the process permanent headroom. Safe in
+# CPython 3.11+: pure-Python frames are heap-allocated, not C-stack frames.
+sys.setrecursionlimit(max(sys.getrecursionlimit(), 20000))
 
 JS_SUFFIXES = tuple(JS_LANGS)
 

@@ -62,12 +62,21 @@ SQL_RE = re.compile(r"^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|WITH|RE
 
 # --------------------------------------------------------------------------- helpers
 def dotted(node: ast.AST) -> list[str] | None:
-    if isinstance(node, ast.Name):
-        return [node.id]
-    if isinstance(node, ast.Attribute):
-        base = dotted(node.value)
-        return base + [node.attr] if base else None
-    return None
+    """`a.b.c` -> ['a', 'b', 'c'], iteratively.
+
+    Attribute chains are unbounded by the parser (unlike paren nesting, which
+    CPython caps at 200), so the recursive form blew the recursion limit on
+    machine-generated fluent chains ~1000 attributes long.
+    """
+    attrs: list[str] = []
+    while isinstance(node, ast.Attribute):
+        attrs.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name):
+        return None
+    attrs.append(node.id)
+    attrs.reverse()
+    return attrs
 
 
 def const_str(node: ast.AST | None) -> str | None:
@@ -192,6 +201,7 @@ class Analyzer:
         self.broad_excepts: list[dict] = []
         self.env_required: list[dict] = []
         self._fn_by_id: dict[str, tuple] = {}  # func id -> (ModuleInfo, FuncCtx) for factory inference
+        self._resolving_instances: set = set()  # (module, var) cycle guard for instance resolution
 
     # ------------------------------------------------------------- utilities
     def snippet(self, mod: ModuleInfo, line: int | None) -> str:
@@ -342,13 +352,31 @@ class Analyzer:
                 self.cache.misses += 1
                 self.cache.store(rel, source, {"parse_error": {"line": exc.lineno, "error": exc.msg}})
                 return
+            except RecursionError:
+                # CPython's C-level AST construction has its own recursion guard
+                # (independent of sys.setrecursionlimit); a file that exceeds it
+                # — usually one machine-generated expression — is skipped with a
+                # parse error instead of failing the whole analysis.
+                msg = "too deeply nested for the Python parser; file skipped"
+                self.parse_errors.append({"file": rel, "line": None, "error": msg})
+                self.cache.misses += 1
+                self.cache.store(rel, source, {"parse_error": {"line": None, "error": msg}})
+                return
             lines = source.splitlines()
             hits = []
             for h in find_secrets(source):
                 text, _ = redact(lines[h["line"] - 1].strip()) if 0 < h["line"] <= len(lines) else ("", None)
                 hits.append({"line": h["line"], "snippet": text[:220]})
             self.cache.misses += 1
-            self.cache.store(rel, source, {"tree": tree, "lines": lines, "secret_hits": hits})
+            try:
+                self.cache.store(rel, source, {"tree": tree, "lines": lines, "secret_hits": hits})
+            except RecursionError:
+                # Pickling a very deeply nested AST recurses per AST level and
+                # hits CPython's C-level recursion guard, which no
+                # sys.setrecursionlimit can lift. The cache is an incremental-
+                # analysis optimisation only: analyse the file from its parsed
+                # tree and skip caching it.
+                pass
             for hit in hits:
                 self.secret_hits.append({**hit, "file": rel})
         name = self._module_name(rel)
@@ -395,9 +423,16 @@ class Analyzer:
             elif isinstance(node, ast.ClassDef):
                 self._add_class(mod, node, cls_path, fn_qual)
             elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-                self._index_assign(mod, node)
+                # only module-level statements define module state (instances,
+                # aliases, env consts); function-local and class-body assigns
+                # must not leak into mod.instances — a local `msg = msg.replace(...)`
+                # otherwise becomes a self-referential "instance" and name
+                # resolution recurses forever
+                if cls_path is None and fn_qual is None:
+                    self._index_assign(mod, node)
             elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
-                self._index_module_call(mod, node.value)
+                if cls_path is None and fn_qual is None:
+                    self._index_module_call(mod, node.value)
             elif isinstance(node, self._BLOCK_STMTS):  # conditional/attempted defs and imports
                 for stmt in self._block_bodies(node):
                     self._index_block(mod, stmt, cls_path, fn_qual)
@@ -568,7 +603,7 @@ class Analyzer:
             if head in mod.functions and len(rest) == 1:
                 return ("func", mod.functions[head].id)
             if head in mod.instances:
-                inst = self.class_of_call(mod, mod.instances[head], None)
+                inst = self._instance_of(mod, head)
                 if inst and inst[0] == "class":
                     if len(rest) == 1:
                         return ("instance", inst[1])
@@ -582,6 +617,22 @@ class Analyzer:
                 return self.resolve_symbol(".".join([mod.bindings[head]] + rest[1:]), depth + 1)
             return None
         return ("lib", fq)
+
+    def _instance_of(self, mod: ModuleInfo, head: str):
+        """Resolve what a module-level instance variable is constructed from.
+
+        Guards against cycles (`x = x.foo()` or two instances referring to
+        each other through aliases/bindings): an in-progress variable resolves
+        to None instead of recursing forever.
+        """
+        key = (mod.name, head)
+        if key in self._resolving_instances:
+            return None
+        self._resolving_instances.add(key)
+        try:
+            return self.class_of_call(mod, mod.instances[head], None)
+        finally:
+            self._resolving_instances.discard(key)
 
     def _split_class_fq(self, cls_fq: str) -> tuple[str | None, str]:
         """'pkg.mod.A.B' -> ('pkg.mod', 'A.B') via longest module-name prefix.
@@ -646,7 +697,7 @@ class Analyzer:
             m = self.find_method(cls_fq, parts[1]) if len(parts) == 2 else None
             return ("func", m) if m else None
         if head in mod.instances and head not in mod.bindings:
-            inst = self.class_of_call(mod, mod.instances[head], None)
+            inst = self._instance_of(mod, head)
             if inst and inst[0] == "class" and len(parts) == 2:
                 m = self.find_method(inst[1], parts[1])
                 return ("func_inferred", m) if m else None
