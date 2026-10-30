@@ -1,4 +1,4 @@
-const AST_ENGINE_URL = import.meta.env.NEXT_PUBLIC_AST_ENGINE_URL || 'http://127.0.0.1:8000'
+const AST_ENGINE_URL = import.meta.env.VITE_AST_ENGINE_URL || 'http://127.0.0.1:8001'
 
 export async function analyzeRepository({ owner, repo, branch, signal }) {
   const url = new URL('/analyze/repo', AST_ENGINE_URL)
@@ -9,7 +9,7 @@ export async function analyzeRepository({ owner, repo, branch, signal }) {
     response = await fetch(url, { headers: { Accept: 'application/json' }, signal })
   } catch (error) {
     if (error?.name === 'AbortError') throw error
-    throw new Error('Cannot reach the AST Engine. Check that the service is running and NEXT_PUBLIC_AST_ENGINE_URL is correct.')
+    throw new Error('Cannot reach the AST Engine. Check that the service is running and VITE_AST_ENGINE_URL is correct.')
   }
 
   if (!response.ok) {

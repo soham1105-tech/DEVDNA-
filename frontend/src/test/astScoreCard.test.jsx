@@ -15,7 +15,7 @@ describe('AstScoreCard', () => {
     expect(screen.getByText('example/sample@main')).toBeInTheDocument()
   })
 
-  it('shows the score, analyzed file count, and AI warning on success', () => {
+  it('shows the score, heuristic subtitle, analyzed file count, and low-complexity warning on success', () => {
     render(
       <AstScoreCard
         ast={{
@@ -27,9 +27,11 @@ describe('AstScoreCard', () => {
       />,
     )
 
-    expect(screen.getByText('87% Verified Human')).toBeInTheDocument()
+    expect(screen.getByText('Complexity score: 87')).toBeInTheDocument()
+    expect(screen.getByText(/Heuristic only, from functions\/classes\/branches\/depth/)).toBeInTheDocument()
+    expect(screen.getByText(/not AI detection/)).toBeInTheDocument()
     expect(screen.getByText('12 Python files analyzed · example/sample@main')).toBeInTheDocument()
-    expect(screen.getByText('AI Boilerplate Flagged')).toBeInTheDocument()
+    expect(screen.getByText('Low complexity — review manually')).toBeInTheDocument()
   })
 
   it('shows N/A and the connection error when the engine is unavailable', () => {

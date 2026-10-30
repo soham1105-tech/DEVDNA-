@@ -218,7 +218,7 @@ uvicorn app.main:app --reload --port 8000
 *API interactive documentation is available at `http://127.0.0.1:8000/docs`.*
 
 ### 2. Frontend Setup
-For AST authenticity scores, start the AST Engine in a separate terminal. The DevDNA API already uses port `8000`, so run the AST Engine on `8001` and point the frontend to it:
+For AST complexity scores, start the AST Engine in a separate terminal. The DevDNA API already uses port `8000`, so run the AST Engine on `8001` and point the frontend to it:
 
 ```bash
 cd ast-engine
@@ -228,10 +228,10 @@ uvicorn main:app --reload --port 8001
 
 In `frontend/.env.local`, configure:
 ```ini
-NEXT_PUBLIC_AST_ENGINE_URL=http://127.0.0.1:8001
+VITE_AST_ENGINE_URL=http://127.0.0.1:8001
 ```
 
-The default AST Engine URL is `http://127.0.0.1:8000`; use `NEXT_PUBLIC_AST_ENGINE_URL` when it runs elsewhere. The AST Engine permits the local Vite origins by default. For another frontend origin, set `AST_ENGINE_CORS_ORIGINS` on the AST Engine to a comma-separated list of allowed origins. In the Upload ZIP tab, enter a public GitHub repository URL and branch to import and analyze it directly, or provide a ZIP file. In Local folder setup, the optional GitHub URL links that project to its AST authenticity score.
+The default AST Engine URL is `http://127.0.0.1:8001`; use `VITE_AST_ENGINE_URL` when it runs elsewhere. The AST Engine permits the local Vite origins by default. For another frontend origin, set `AST_ENGINE_CORS_ORIGINS` on the AST Engine to a comma-separated list of allowed origins. In the Upload ZIP tab, enter a public GitHub repository URL and branch to import and analyze it directly, or provide a ZIP file. In Local folder setup, the optional GitHub URL links that project to its AST complexity score.
 
 The standalone AST endpoint accepts a repository URL directly:
 ```text
