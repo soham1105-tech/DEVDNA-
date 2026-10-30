@@ -209,7 +209,9 @@ def _zip(entries):
     return buf.getvalue()
 
 
-def test_upload_flow_and_blocked_experiment(client):
+def test_upload_flow_and_blocked_experiment(client, monkeypatch):
+    from app.experiments import runner
+    monkeypatch.setattr(runner, "docker_available", lambda: False)
     data = _zip({"proj/app.py": "import sqlite3\n\ndef get():\n    return sqlite3.connect('x.db')\n",
                  "proj/.env": "GEMINI_API_KEY=should-never-be-read"})
     r = client.post(
