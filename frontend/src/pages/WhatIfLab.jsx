@@ -136,7 +136,7 @@ function Lab({ project }) {
     setSynthesizing(true)
     setError(null)
     try {
-      const syn = await api.dynamicScenario(project.id, { prompt: customPrompt, consent: true })
+      const syn = await api.dynamicScenario(project.id, { prompt: customPrompt, consent: dynamicConsent })
       const spec = syn.result
       const p = await api.createPrediction(
         project.id,
