@@ -1,16 +1,11 @@
 """Tests for calibrated risk scoring learned from experiment outcomes."""
 from __future__ import annotations
 
-import pytest
 from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models import Experiment, Prediction, PredictionOutcome
+from app.models import PredictionOutcome
 from app.services.calibration import (
-    build_pattern_key,
-    calibrate_impact,
-    get_pattern_break_rate,
-    record_experiment_outcomes,
     seed_calibration_outcomes,
 )
 

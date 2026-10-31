@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.db import SessionLocal
 from app.models import Edge
-from app.services.traces import ComponentIndex, compare_traces, parse_trace_bytes, trace_findings
+from app.services.traces import ComponentIndex, parse_trace_bytes, trace_findings
 
 TRACE_RULES = {"static_edge_unobserved", "runtime_edge_missing_from_model"}
 

@@ -13,7 +13,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from app import db as dbmod
 from app.config import settings
 from app.db import get_db
 from app.models import AnalysisRun, Finding

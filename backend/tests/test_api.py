@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from app import db as dbmod
 from app.config import settings
-from app.models import AnalysisRun, Component, Finding, FindingSuppression, FindingSuppressionAudit, Project
+from app.models import AnalysisRun, Component, Finding, FindingSuppression, Project
 
 
 def test_health(client):

@@ -1,5 +1,4 @@
 """Unit tests for the incremental FileCache."""
-import pytest
 
 from app.analyzer.cache import FileCache
 

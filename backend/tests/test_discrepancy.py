@@ -1,16 +1,13 @@
-import difflib
 import json
 import re
 import shutil
 import tempfile
 from pathlib import Path
 
-import pytest
 
-from app.config import settings
 from app.db import SessionLocal
 from app.experiments import runner
-from app.models import Experiment, Prediction, Project
+from app.models import Experiment
 
 
 SAMPLE_PROJECT_DIR = Path(__file__).resolve().parent.parent / "sample_project"
@@ -222,11 +219,11 @@ def test_sample_project_shipping_api_discrepancy_verification(client, sample_pro
 
         work_baseline = Path(td) / "w_baseline"
         work_baseline.mkdir()
-        baseline_res = runner._run_pytest(proj_copy, work_baseline, None, "baseline", "local_harness")
+        runner._run_pytest(proj_copy, work_baseline, None, "baseline", "local_harness")
 
         work_faulted = Path(td) / "w_faulted"
         work_faulted.mkdir()
-        faulted_res = runner._run_pytest(proj_copy, work_faulted, fspec, "faulted", "local_harness")
+        runner._run_pytest(proj_copy, work_faulted, fspec, "faulted", "local_harness")
 
         baseline_tests = runner.parse_junit(work_baseline / "baseline.xml")
         faulted_tests = runner.parse_junit(work_faulted / "faulted.xml")

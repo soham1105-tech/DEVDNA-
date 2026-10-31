@@ -1214,7 +1214,7 @@ class JSAnalyzer:
                 model = extract_file(rel, source, lang)
                 self.cache.misses += 1
                 self.cache.store(rel, source, {k: v for k, v in model.items() if not k.startswith("_")})
-            model["_lines"] = [redact(l.strip())[0][:220] for l in source.splitlines()]
+            model["_lines"] = [redact(line_text.strip())[0][:220] for line_text in source.splitlines()]
             if model.get("parse_error"):
                 self.parse_errors.append({"file": rel, "line": model["parse_error"]["line"],
                                           "error": model["parse_error"]["error"]})

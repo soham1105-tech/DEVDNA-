@@ -1,5 +1,4 @@
 """Tests for the language dispatcher (python / JS / mixed / empty repositories)."""
-from pathlib import Path
 
 import pytest
 

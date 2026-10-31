@@ -13,7 +13,8 @@ def _impact(preds):
 
 
 def _obs(baseline, faulted, triggers=3, errors=None):
-    res = lambda d: {f"tests.t::{n}": {"outcome": o, "message": "", "time": 0} for n, o in d.items()}
+    def res(d):
+        return {f"tests.t::{n}": {"outcome": o, "message": "", "time": 0} for n, o in d.items()}
     return {"baseline": {"timed_out": False, "results": res(baseline), "fault_state": {}},
             "faulted": {"timed_out": False, "results": res(faulted),
                         "fault_state": {"triggers": triggers, "errors": errors or []}}}

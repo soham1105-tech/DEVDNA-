@@ -58,7 +58,24 @@ Before submitting any Pull Request, ensure all automated tests pass cleanly with
 cd backend
 python -m pytest -v
 ```
-*(All 139 unit and integration tests must pass).*
+*(All backend unit and integration tests must pass.)*
+
+### Backend Lint
+```bash
+uvx ruff check backend/
+```
+*(The lint job must pass; configuration lives in `ruff.toml` at the repository root.)*
+
+### Backend dependencies
+`backend/requirements.txt` is the top-level install file (direct dependencies,
+lower bounds). `backend/requirements.lock` is the fully pinned resolution that
+CI installs. After changing `requirements.txt`, regenerate the lockfile with:
+
+```bash
+cd backend
+uv pip compile requirements.txt --universal -o requirements.lock --header
+```
+*(The lock is universal so it resolves for any Python >= 3.11, matching CI.)*
 
 ### Frontend Tests & Production Build
 ```bash

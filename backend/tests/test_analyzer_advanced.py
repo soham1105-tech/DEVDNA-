@@ -1,6 +1,4 @@
-import sqlite3
 from pathlib import Path
-import pytest
 
 from app.analyzer.python_analyzer import analyse_project
 from app.graph.engine import build_graph, compute_impact

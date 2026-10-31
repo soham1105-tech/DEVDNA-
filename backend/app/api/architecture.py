@@ -43,7 +43,8 @@ def component_detail(project_id: str, component_id: str, db: Session = Depends(g
     comp = next((c for c in comps if c["id"] == component_id), None)
     if not comp:
         raise HTTPException(404, detail={"code": "component_not_found", "message": f"Component '{component_id}' not found"})
-    strip = lambda e: {k: e[k] for k in ("id", "source", "target", "type", "classification", "evidence")}
+    def strip(e):
+        return {k: e[k] for k in ("id", "source", "target", "type", "classification", "evidence")}
     hood = neighbourhood(g, component_id)
     findings = db.scalars(select(Finding).where(Finding.run_id == run.id, Finding.component_id == component_id)).all()
     suppressions = suppression_map(db, findings)
@@ -171,7 +172,8 @@ def project_drift(project_id: str, db: Session = Depends(get_db)):
     previous_components = db.scalars(select(Component).where(Component.run_id == previous.id)).all()
     latest_routes = {component.id: component for component in latest_components if component.type == "route"}
     previous_routes = {component.id: component for component in previous_components if component.type == "route"}
-    route_out = lambda component: {"id": component.id, "name": component.name, "file": component.file}
+    def route_out(component):
+        return {"id": component.id, "name": component.name, "file": component.file}
     latest_by_id = {component.id: component for component in latest_components if component.type != "test"}
     previous_by_id = {component.id: component for component in previous_components if component.type != "test"}
     growth = []

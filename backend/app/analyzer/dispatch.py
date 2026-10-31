@@ -21,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-from app.analyzer.cache import FileCache, default_cache_dir
+from app.analyzer.cache import default_cache_dir
 from app.analyzer.ingest import scan_tree
 from app.analyzer.js_analyzer import JS_LANGS, analyse_js_project
 from app.analyzer.python_analyzer import analyse_project

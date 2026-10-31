@@ -12,7 +12,7 @@ from app.graph.engine import __doc__ as SCORE_DOC
 from app.models import AIInteraction, Experiment, Finding, Prediction, Project
 from app.services.analysis import component_dicts
 from app.services.finding_workflow import finding_fingerprint, suppression_map
-from app.services.serialize import STATUS_LABELS, experiment_out, finding_out, prediction_out
+from app.services.serialize import STATUS_LABELS, experiment_out, finding_out
 
 LIMITATIONS = [
     "Architecture is discovered by static analysis of Python source; dynamic behaviour is not observed.",

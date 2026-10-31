@@ -177,7 +177,6 @@ def calibrate_impact(db: Session, impact: dict, scenario: str) -> dict[str, Any]
     definite_count = summary.get("definite", 0)
     possible_count = summary.get("possible", 0)
     routes_count = summary.get("routes_affected", 0)
-    tests_fail = summary.get("tests_predicted_fail", 0)
 
     # Old heuristic formula
     raw_heuristic = min(100.0, (definite_count * 15.0) + (possible_count * 8.0) + (routes_count * 20.0))
