@@ -216,7 +216,7 @@ Launch the backend API:
 uvicorn app.main:app --reload --port 8000
 ```
 
-Dependencies: `backend/requirements.txt` lists the direct dependencies; `backend/requirements.lock` is the pinned resolution that CI installs (regenerate with `uv pip compile requirements.txt --universal -o requirements.lock` after changing requirements). Backend lint runs `ruff check backend/` (config in `ruff.toml`) in CI.
+Dependencies: `backend/requirements.txt` lists the direct dependencies; `backend/requirements.lock` is the pinned resolution that CI installs (regenerate with `uv pip compile requirements.txt --python-version 3.11 -o requirements.lock` after changing requirements). Backend lint runs `ruff check backend/` (config in `ruff.toml`) in CI.
 *API interactive documentation is available at `http://127.0.0.1:8000/docs`.*
 
 Optional hardening (off by default): set `DEVDNA_API_TOKEN` in `backend/.env` to require an `X-DevDNA-Token` header on every `/api` call except `/api/health` (401 `unauthorized` otherwise), and `DEVDNA_RATE_LIMIT_PER_MINUTE` (default 120) for the per-IP request budget (429 `rate_limited`). When the token is set, paste it once in the frontend under Settings → "API access token"; it is stored for the current tab only. Without a token the server logs a startup warning that it is unauthenticated and localhost-only.

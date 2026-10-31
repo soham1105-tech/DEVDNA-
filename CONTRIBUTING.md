@@ -73,9 +73,9 @@ CI installs. After changing `requirements.txt`, regenerate the lockfile with:
 
 ```bash
 cd backend
-uv pip compile requirements.txt --universal -o requirements.lock --header
+uv pip compile requirements.txt --python-version 3.11 -o requirements.lock --header
 ```
-*(The lock is universal so it resolves for any Python >= 3.11, matching CI.)*
+*(The lock targets Python 3.11, the version CI installs.)*
 
 ### Frontend Tests & Production Build
 ```bash
