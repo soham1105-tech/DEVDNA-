@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import db as dbmod
-from app.api import ai, architecture, experiments, projects, system, traces
+from app.api import ai, architecture, experiments, guard, projects, system, traces
 from app.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -21,6 +21,10 @@ async def lifespan(app: FastAPI):
     if dbmod.engine is None:
         dbmod.init_engine()
     settings.projects_dir.mkdir(parents=True, exist_ok=True)
+    if not settings.api_token:
+        logging.getLogger("devdna").warning(
+            "DEVDNA_API_TOKEN is not set - the API is unauthenticated and intended for localhost use only."
+        )
     yield
 
 
@@ -30,6 +34,9 @@ app = FastAPI(
     description="AI-powered digital twin for software systems: discover, visualise, predict, experiment, compare.",
     lifespan=lifespan,
 )
+# Guard first (innermost) so CORS stays the outermost layer and error
+# responses still reach the browser with CORS headers attached.
+app.add_middleware(guard.GuardMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=False,
                    allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["Content-Type"])
 

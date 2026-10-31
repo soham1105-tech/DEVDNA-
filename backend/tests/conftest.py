@@ -24,6 +24,19 @@ BACKEND = Path(__file__).resolve().parent.parent
 SAMPLE = BACKEND / "sample_project"
 
 
+@pytest.fixture(autouse=True)
+def _rate_limit_fresh():
+    """Every test starts with an empty rate-limit bucket; the burst test
+    overrides the limit itself and restores the default afterwards."""
+    from app.api import guard
+
+    guard.reset_rate_limit()
+    guard.set_rate_limit(None)
+    yield
+    guard.reset_rate_limit()
+    guard.set_rate_limit(None)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _engine():
     settings.data_dir = Path(_TMP)

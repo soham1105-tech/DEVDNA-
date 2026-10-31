@@ -217,6 +217,8 @@ uvicorn app.main:app --reload --port 8000
 ```
 *API interactive documentation is available at `http://127.0.0.1:8000/docs`.*
 
+Optional hardening (off by default): set `DEVDNA_API_TOKEN` in `backend/.env` to require an `X-DevDNA-Token` header on every `/api` call except `/api/health` (401 `unauthorized` otherwise), and `DEVDNA_RATE_LIMIT_PER_MINUTE` (default 120) for the per-IP request budget (429 `rate_limited`). When the token is set, paste it once in the frontend under Settings → "API access token"; it is stored for the current tab only. Without a token the server logs a startup warning that it is unauthenticated and localhost-only.
+
 ### 2. Frontend Setup
 For AST complexity scores, start the AST Engine in a separate terminal. The DevDNA API already uses port `8000`, so run the AST Engine on `8001` and point the frontend to it:
 

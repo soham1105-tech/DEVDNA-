@@ -3,6 +3,7 @@ import zipfile
 from datetime import datetime, timedelta, timezone
 
 from app import db as dbmod
+from app.config import settings
 from app.models import AnalysisRun, Component, Finding, FindingSuppression, FindingSuppressionAudit, Project
 
 
@@ -383,3 +384,47 @@ def test_multimodal_audit_and_dynamic_scenario(client, sample_project):
     assert sim["neuro_symbolic"] is False
     assert "not an AI prediction" in sim["method"] and "not a failure probability" in sim["method"]
     assert pred["impact"]["custom_fault"]["kind"] == "dynamic_fault"
+
+
+def test_token_auth_required_when_configured(client, monkeypatch):
+    """With DEVDNA_API_TOKEN set, /api routes need a matching X-DevDNA-Token;
+    /api/health stays open."""
+    monkeypatch.setattr(settings, "api_token", "secret-token-1")
+    r = client.get("/api/projects")
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "unauthorized"
+
+    r = client.get("/api/projects", headers={"X-DevDNA-Token": "secret-token-1"})
+    assert r.status_code == 200
+
+    r = client.get("/api/projects", headers={"X-DevDNA-Token": "wrong"})
+    assert r.status_code == 401
+
+    # health remains reachable without a token even in token mode
+    assert client.get("/api/health").status_code == 200
+
+
+def test_token_auth_off_by_default(client):
+    """Without DEVDNA_API_TOKEN the local behaviour is unchanged."""
+    assert not settings.api_token
+    assert client.get("/api/projects").status_code == 200
+
+
+def test_rate_limit_burst(client):
+    """A burst over the per-IP budget gets 429 with code rate_limited."""
+    from app.api import guard
+
+    guard.set_rate_limit(3)
+    try:
+        guard.reset_rate_limit()
+        for _ in range(3):
+            assert client.get("/api/health").status_code == 200
+        r = client.get("/api/health")
+        assert r.status_code == 429
+        assert r.json()["error"]["code"] == "rate_limited"
+        # the budget recovers after the window; reset is immediate in tests
+        guard.reset_rate_limit()
+        assert client.get("/api/health").status_code == 200
+    finally:
+        guard.set_rate_limit(None)
+        guard.reset_rate_limit()

@@ -8,8 +8,52 @@ import { writeStore } from '../hooks/storage'
 import { useProject } from '../hooks/useProject'
 import { useSettings } from '../hooks/useSettings'
 import { useStatus } from '../hooks/useStatus'
-import { api } from '../services/api'
+import { api, hasApiToken, setApiToken } from '../services/api'
 import { timeAgo } from '../utils/format'
+
+function ApiTokenCard() {
+  const [value, setValue] = useState('')
+  const [tokenSet, setTokenSet] = useState(hasApiToken())
+
+  const save = () => {
+    setApiToken(value.trim())
+    setValue('')
+    setTokenSet(hasApiToken())
+  }
+
+  const clear = () => {
+    setApiToken('')
+    setValue('')
+    setTokenSet(false)
+  }
+
+  return (
+    <Card>
+      <CardHeader title="API access token" subtitle="Only needed when the backend sets DEVDNA_API_TOKEN" icon={KeyRound} />
+      <div className="space-y-3 p-4 text-sm text-muted">
+        <p>
+          If the server runs with <code className="num text-ink">DEVDNA_API_TOKEN</code>, every API call must carry it.
+          The token is kept in this browser tab only (sessionStorage), is sent as the{' '}
+          <code className="num text-ink">X-DevDNA-Token</code> header, and is never displayed back after saving.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && value.trim() && save()}
+            placeholder={tokenSet ? 'Token saved for this tab — paste a new one to replace it' : 'Paste the API token'}
+            aria-label="API access token"
+            className="h-9 min-w-0 flex-1 rounded-control border border-control bg-surface px-3 text-sm text-ink outline-none focus:border-accent"
+          />
+          <Button size="sm" onClick={save} disabled={!value.trim()}>Save token</Button>
+          <Button size="sm" variant="ghost" onClick={clear} disabled={!tokenSet}>Clear</Button>
+        </div>
+        <p className="text-xs text-faint">{tokenSet ? 'A token is set for this tab.' : 'No token set. The backend must be running in local mode or requests will fail with 401.'}</p>
+      </div>
+    </Card>
+  )
+}
 
 function Segmented({ value, options, onChange, label }) {
   return (
@@ -94,6 +138,8 @@ export default function Settings() {
             <Row k="API docs" v={<a className="text-accent hover:underline" href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">OpenAPI /docs</a>} />
           </div>
         </Card>
+
+        <ApiTokenCard />
 
         <Card>
           <CardHeader title="Privacy and consent" icon={ShieldCheck} />

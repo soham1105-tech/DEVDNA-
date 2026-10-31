@@ -2,9 +2,13 @@
 
 ## Deployment warning
 
-The DevDNA API currently has no authentication, authorization, or rate limiting. It is intended for localhost use only and must not be exposed publicly as-is. Anyone who can reach the API can list and delete projects and, if a Gemini API key is configured, make requests that spend that key's quota.
+By default the DevDNA API is unauthenticated and intended for localhost use only. Anyone who can reach the API can list and delete projects and, if a Gemini API key is configured, make requests that spend that key's quota. The server logs a warning on startup in this mode.
 
-Do not treat the current application as suitable for an untrusted or public network. Keep it bound to localhost unless and until the repository owner implements and verifies appropriate access controls and operational protections.
+**Opt-in token auth:** set `DEVDNA_API_TOKEN` on the backend to require a shared secret. Every `/api` route except `/api/health` then demands an `X-DevDNA-Token` header with the exact value and answers `401 {"error": {"code": "unauthorized"}}` otherwise. In the frontend, paste the token in Settings under "API access token": it is kept in `sessionStorage` for the current tab only, sent on every API call, never displayed back, and never written to `localStorage`.
+
+**Rate limiting:** every `/api` route (health included) is limited per client IP to `DEVDNA_RATE_LIMIT_PER_MINUTE` requests per minute (default 120). Over the budget the API answers `429 {"error": {"code": "rate_limited"}}`. The counter is in-process and resets on restart; with multiple uvicorn workers each worker keeps its own counter.
+
+Do not treat the application as suitable for an untrusted or public network without also enabling TLS, strong token hygiene, and the operational protections a public deployment requires.
 
 ## Security scope
 

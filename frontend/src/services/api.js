@@ -4,6 +4,25 @@ import axios from 'axios'
 // Set VITE_API_URL to call a backend on another origin.
 const http = axios.create({ baseURL: import.meta.env.VITE_API_URL || '', timeout: 120000 })
 
+// Opt-in API auth: when the backend requires a token (DEVDNA_API_TOKEN), the
+// user sets it in Settings. Read from sessionStorage on every call so a
+// change applies immediately; never persisted to localStorage.
+const TOKEN_KEY = 'devdna.apiToken'
+http.interceptors.request.use((config) => {
+  const token = sessionStorage.getItem(TOKEN_KEY)
+  if (token) config.headers['X-DevDNA-Token'] = token
+  return config
+})
+
+export function setApiToken(token) {
+  if (token) sessionStorage.setItem(TOKEN_KEY, token)
+  else sessionStorage.removeItem(TOKEN_KEY)
+}
+
+export function hasApiToken() {
+  return Boolean(sessionStorage.getItem(TOKEN_KEY))
+}
+
 /** Turn any axios error into { status, code, message, fields }. */
 export function toApiError(err) {
   if (err?.response) {

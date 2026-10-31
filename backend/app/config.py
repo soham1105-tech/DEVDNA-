@@ -47,6 +47,12 @@ class Settings:
     )
     # Experiments
     experiment_timeout_s: int = field(default_factory=lambda: _int("DEVDNA_EXPERIMENT_TIMEOUT", 90))
+    # Opt-in API auth: when DEVDNA_API_TOKEN is set, every /api route except
+    # /api/health requires a matching X-DevDNA-Token header. Empty = local,
+    # unauthenticated mode (a startup warning is logged).
+    api_token: str = field(default_factory=lambda: os.environ.get("DEVDNA_API_TOKEN", "").strip())
+    # Simple per-IP request budget applied to /api routes.
+    rate_limit_per_minute: int = field(default_factory=lambda: _int("DEVDNA_RATE_LIMIT_PER_MINUTE", 120))
     # AI
     gemma_model: str = field(default_factory=lambda: os.environ.get("GEMMA_MODEL", "gemma-4-26b-a4b-it"))
     ai_timeout_s: int = field(default_factory=lambda: _int("DEVDNA_AI_TIMEOUT", 180))
