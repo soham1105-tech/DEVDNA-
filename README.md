@@ -180,6 +180,16 @@ flowchart LR
 
 ## 8. Quickstart & Local Setup
 
+### One-command demo (Docker)
+
+```bash
+docker compose up --build
+```
+
+Then open **http://localhost:8080** and load the bundled demo project. This starts the API (port 8000), the AST engine (8001) and the frontend (8080) with same-origin proxies, so no CORS setup is needed. The demo project works without an API key; set `GEMINI_API_KEY` in your shell to enable Gemma explanations.
+
+### Manual setup
+
 ### Prerequisites
 * **Python:** 3.11 or later
 * **Node.js:** 18 or later (npm 9+)

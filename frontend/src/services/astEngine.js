@@ -1,8 +1,10 @@
 const AST_ENGINE_URL = import.meta.env.VITE_AST_ENGINE_URL || 'http://127.0.0.1:8001'
 
 export async function analyzeRepository({ owner, repo, branch, signal }) {
-  const url = new URL('/analyze/repo', AST_ENGINE_URL)
-  url.search = new URLSearchParams({ owner, repo, branch }).toString()
+  // AST_ENGINE_URL may be absolute (local dev) or a relative base ("/ast")
+  // when the frontend is served behind a proxy, so build the URL manually.
+  const query = new URLSearchParams({ owner, repo, branch }).toString()
+  const url = `${AST_ENGINE_URL.replace(/\/$/, '')}/analyze/repo?${query}`
 
   let response
   try {

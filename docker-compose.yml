@@ -1,0 +1,31 @@
+# One-command demo: docker compose up --build, then open http://localhost:8080
+# The bundled ShopLite demo project works with no API key; set GEMINI_API_KEY
+# to enable Gemma explanations.
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend-data:/data
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+
+  ast-engine:
+    build: ./ast-engine
+    ports:
+      - "8001:8001"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_AST_ENGINE_URL: /ast
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+      - ast-engine
+
+volumes:
+  backend-data:
