@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app import db as dbmod
 from app.analyzer.dispatch import analyse_repository
+from app.analyzer.redact import redact_obj
 from app.graph.engine import build_graph, compute_metrics
 from app.models import AnalysisRun, Component, Edge, Finding, Project
 from app.services.findings import generate_findings
@@ -90,14 +91,15 @@ def run_analysis(run_id: str) -> None:
 
 def component_dicts(db: Session, run_id: str) -> list[dict]:
     rows = db.scalars(select(Component).where(Component.run_id == run_id)).all()
-    return [{"id": c.id, "type": c.type, "name": c.name, "file": c.file, "line": c.line, "data": c.data or {},
+    return [{"id": c.id, "type": c.type, "name": c.name, "file": c.file, "line": c.line,
+             "data": redact_obj(c.data or {}),
              "metrics": c.metrics or {}} for c in rows]
 
 
 def edge_dicts(db: Session, run_id: str) -> list[dict]:
     rows = db.scalars(select(Edge).where(Edge.run_id == run_id)).all()
     return [{"id": e.id, "source": e.source, "target": e.target, "type": e.type, "classification": e.classification,
-             "evidence": e.evidence or [], "call_sites": e.call_sites or []} for e in rows]
+             "evidence": redact_obj(e.evidence or []), "call_sites": redact_obj(e.call_sites or [])} for e in rows]
 
 
 def load_graph(db: Session, run_id: str):

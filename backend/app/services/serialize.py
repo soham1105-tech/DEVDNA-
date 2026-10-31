@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import timezone
 
+from app.analyzer.redact import redact_obj
 from app.models import AnalysisRun, Experiment, Finding, Prediction, Project
 from app.services.finding_workflow import active_suppression, finding_fingerprint
 
@@ -51,7 +52,7 @@ def run_out(r: AnalysisRun) -> dict:
 def finding_out(f: Finding, suppression=None) -> dict:
     suppressed = active_suppression(suppression)
     return {"id": f.id, "run_id": f.run_id, "rule": f.rule, "title": f.title, "severity": f.severity,
-            "component_id": f.component_id, "description": f.description, "evidence": f.evidence or [],
+            "component_id": f.component_id, "description": f.description, "evidence": redact_obj(f.evidence or []),
             "confidence": f.confidence, "assumptions": f.assumptions or [], "mitigation": f.mitigation,
             "review_status": f.review_status, "owner": f.owner or "Unassigned",
             "is_suppressed": suppressed,
@@ -64,7 +65,7 @@ def finding_out(f: Finding, suppression=None) -> dict:
 
 def prediction_out(p: Prediction) -> dict:
     return {"id": p.id, "project_id": p.project_id, "run_id": p.run_id, "scenario": p.scenario,
-            "target_id": p.target_id, "impact": p.impact, "ai_explanation": p.ai_explanation,
+            "target_id": p.target_id, "impact": p.impact, "ai_explanation": redact_obj(p.ai_explanation),
             "created_at": iso(p.created_at), "kind": "prediction"}
 
 
@@ -73,7 +74,7 @@ def experiment_out(e: Experiment, include_prediction: bool = True) -> dict:
         "id": e.id, "project_id": e.project_id, "prediction_id": e.prediction_id, "status": e.status,
         "status_label": STATUS_LABELS.get(e.status, e.status), "mode": e.mode,
         "approved_at": iso(e.approved_at), "started_at": iso(e.started_at), "finished_at": iso(e.finished_at),
-        "observation": e.observation or {}, "comparison": e.comparison or {}, "ai_interpretation": e.ai_interpretation,
+        "observation": redact_obj(e.observation or {}), "comparison": redact_obj(e.comparison or {}), "ai_interpretation": redact_obj(e.ai_interpretation),
         "error": e.error, "created_at": iso(e.created_at),
     }
     if include_prediction and e.prediction:
