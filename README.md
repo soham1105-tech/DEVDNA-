@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![CI](https://github.com/SUBHA22-CODER/DEVDNA-/actions/workflows/ci.yml/badge.svg)](https://github.com/SUBHA22-CODER/DEVDNA-/actions)
+[![CI](https://github.com/soham1105-tech/DEVDNA-/actions/workflows/ci.yml/badge.svg)](https://github.com/soham1105-tech/DEVDNA-/actions)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-18.3-61dafb?logo=react&logoColor=black)](https://react.dev)
@@ -208,7 +208,7 @@ copy .env.example .env    # Windows
 ```ini
 GEMINI_API_KEY=AIzaSy...
 GEMMA_MODEL=gemma-4-26b-a4b-it
-DEVDNA_ALLOWED_LOCAL_ROOTS=C:\Users\Subha Prasana Parida
+DEVDNA_ALLOWED_LOCAL_ROOTS=C:\path\to\allowed\folder
 ```
 
 Launch the backend API:
@@ -345,4 +345,4 @@ DEVDNA/
 
 ## 14. License
 
-There is no `LICENSE` file in this repository yet. No license is granted until the repository owner chooses and adds one.
+MIT — see [LICENSE](LICENSE).
