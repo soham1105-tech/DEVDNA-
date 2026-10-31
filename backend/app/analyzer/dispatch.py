@@ -10,14 +10,27 @@
 Both analyzers emit the same component/edge format, so downstream consumers
 (graph engine, findings, API, frontend) need no changes.
 
-Incremental analysis: per-file parse/extract results are cached by content
-hash under `<data_dir>/analyzer-cache/<project-key>/`; on re-analysis only
-changed files are re-parsed (see `cache.py`).
+Incremental analysis: per-file extraction models are cached (signed JSON) by
+content hash under `<data_dir>/analyzer-cache/<project-key>/`; on re-analysis
+unchanged files reuse their cached model (see `cache.py`).
+
+Recursion headroom: the analyzers recurse over source structure (the Python
+resolver walks one frame per link in a construction/attribute chain, and `ast`
+accepts attribute chains of unbounded length — paren nesting is capped by the
+parser, attribute chains are not). CPython's default limit of 1000 frames is
+reachable with real machine-generated code. Importing this module must not
+change the process-wide limit, so `analyse_repository` runs its work in a
+dedicated worker thread that raises the limit and carries an enlarged stack
+(64 MB), restoring the previous limit when it finishes. Concurrency note: the
+limit is process-wide in CPython, so a second analysis restoring it while
+another is still deep could break the first; analyses are therefore
+serialised with a lock — they are CPU-heavy and single-user anyway.
 """
 from __future__ import annotations
 
 import logging
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -28,13 +41,11 @@ from app.analyzer.python_analyzer import analyse_project
 
 log = logging.getLogger("devdna.analysis")
 
-# The analyzers recurse over source structure: the Python resolver walks one
-# frame per link in a construction/attribute chain, and `ast` accepts attribute
-# chains of unbounded length (paren nesting is capped by the parser, attribute
-# chains are not). CPython's default limit of 1000 frames is reachable with
-# real machine-generated code, so give the process permanent headroom. Safe in
-# CPython 3.11+: pure-Python frames are heap-allocated, not C-stack frames.
-sys.setrecursionlimit(max(sys.getrecursionlimit(), 20000))
+_ANALYSIS_RECURSION_LIMIT = 20000
+_ANALYSIS_STACK_BYTES = 64 * 1024 * 1024
+# One analysis at a time: the recursion limit is process-wide, so restoring it
+# at worker exit must not race another running analysis.
+_analysis_lock = threading.Lock()
 
 JS_SUFFIXES = tuple(JS_LANGS)
 
@@ -92,6 +103,44 @@ def _merge_results(py: dict, js: dict) -> dict:
     }
 
 
+def _run_with_recursion_headroom(fn):
+    """Run fn() in a dedicated thread with a raised recursion limit and an
+    enlarged stack, restoring the previous limit on exit.
+
+    Chosen over finishing the iterative rewrite of the remaining recursive
+    walkers as the smaller safe change: the resolver's recursion depth is data
+    dependent, the workers are short-lived, and CPython 3.11+ allocates
+    pure-Python frames on the heap, so the raised limit is safe. Analyses are
+    serialised so the limit restore cannot race a still-running analysis.
+    """
+    result: dict = {}
+
+    def worker():
+        previous_limit = sys.getrecursionlimit()
+        sys.setrecursionlimit(_ANALYSIS_RECURSION_LIMIT)
+        try:
+            result["value"] = fn()
+        except BaseException as exc:  # re-raised on the caller's thread
+            result["error"] = exc
+        finally:
+            sys.setrecursionlimit(previous_limit)
+
+    try:
+        previous_stack = threading.stack_size(_ANALYSIS_STACK_BYTES)
+    except (ValueError, OSError):  # platform refuses the size; default stack
+        previous_stack = None
+    try:
+        thread = threading.Thread(target=worker, name="devdna-analysis", daemon=True)
+        thread.start()
+    finally:
+        if previous_stack is not None:
+            threading.stack_size(previous_stack)
+    thread.join()
+    if "error" in result:
+        raise result["error"]
+    return result["value"]
+
+
 def analyse_repository(root: Path, progress=None, cache_dir: Path | None = None,
                        use_cache: bool = True) -> dict:
     """Analyse a repository with the appropriate analyzer(s) and log time/file counts."""
@@ -100,26 +149,30 @@ def analyse_repository(root: Path, progress=None, cache_dir: Path | None = None,
     if cache_dir is None:
         cache_dir = default_cache_dir(root)
 
-    tree = scan_tree(root)
-    py_files = [f for f in tree["files"] if f.endswith(".py")]
-    js_files = [f for f in tree["files"] if _is_js_file(f)]
+    def analyse():
+        tree = scan_tree(root)
+        py_files = [f for f in tree["files"] if f.endswith(".py")]
+        js_files = [f for f in tree["files"] if _is_js_file(f)]
 
-    # no dispatcher-level progress steps: the analyzers emit their own stage
-    # list starting at "Scanning files", which the UI and tests rely on
-    if not js_files:  # python-only (also covers empty repositories)
-        result = analyse_project(root, progress, tree=tree, cache_dir=cache_dir, use_cache=use_cache)
-    elif not py_files:  # JS/TS-only
-        result = analyse_js_project(root, progress, tree=tree, cache_dir=cache_dir, use_cache=use_cache)
-    else:  # mixed
-        py_result = analyse_project(root, progress, tree=tree,
-                                    cache_dir=cache_dir, use_cache=use_cache)
-        js_result = analyse_js_project(root, progress, tree=tree,
-                                       cache_dir=cache_dir, use_cache=use_cache)
-        result = _merge_results(py_result, js_result)
+        # no dispatcher-level progress steps: the analyzers emit their own stage
+        # list starting at "Scanning files", which the UI and tests rely on
+        if not js_files:  # python-only (also covers empty repositories)
+            result = analyse_project(root, progress, tree=tree, cache_dir=cache_dir, use_cache=use_cache)
+        elif not py_files:  # JS/TS-only
+            result = analyse_js_project(root, progress, tree=tree, cache_dir=cache_dir, use_cache=use_cache)
+        else:  # mixed
+            py_result = analyse_project(root, progress, tree=tree,
+                                        cache_dir=cache_dir, use_cache=use_cache)
+            js_result = analyse_js_project(root, progress, tree=tree,
+                                           cache_dir=cache_dir, use_cache=use_cache)
+            result = _merge_results(py_result, js_result)
 
-    elapsed = time.perf_counter() - started
-    analysed = result["scan"]["file_count"]
-    reused = result["scan"].get("incremental", {}).get("files_reused", 0)
-    log.info("Analysed %d files (%d Python, %d JS/TS) in %.2fs (%d from cache)",
-             analysed, len(py_files), len(js_files), elapsed, reused)
-    return result
+        elapsed = time.perf_counter() - started
+        analysed = result["scan"]["file_count"]
+        reused = result["scan"].get("incremental", {}).get("files_reused", 0)
+        log.info("Analysed %d files (%d Python, %d JS/TS) in %.2fs (%d from cache)",
+                 analysed, len(py_files), len(js_files), elapsed, reused)
+        return result
+
+    with _analysis_lock:
+        return _run_with_recursion_headroom(analyse)

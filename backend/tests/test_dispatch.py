@@ -89,3 +89,34 @@ def test_minified_and_declaration_files_are_skipped(repo):
     analysed = {c["file"] for c in result["components"] if c["file"]}
     assert "app.js" in analysed
     assert not any(f in analysed for f in ("vendor.min.js", "types.d.ts"))
+
+
+def test_importing_dispatch_leaves_recursion_limit_unchanged():
+    """Importing the server module must never change the process-wide limit
+    (regression: dispatch used to call sys.setrecursionlimit at import)."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    backend = Path(__file__).resolve().parent.parent
+    code = (
+        "import sys\n"
+        "before = sys.getrecursionlimit()\n"
+        "import app.analyzer.dispatch\n"
+        "after = sys.getrecursionlimit()\n"
+        "assert before == after, (before, after)\n"
+        "print('ok')\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=backend)
+    assert proc.returncode == 0, proc.stderr
+    assert "ok" in proc.stdout
+
+
+def test_analysis_restores_recursion_limit(repo):
+    import sys
+
+    from app.analyzer.dispatch import analyse_repository
+
+    before = sys.getrecursionlimit()
+    analyse_repository(repo)
+    assert sys.getrecursionlimit() == before

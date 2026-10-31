@@ -335,7 +335,12 @@ class Analyzer:
             source = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return
-        # incremental: reuse the cached parse for unchanged files
+        # The cache stores a JSON-serialisable model of the file's *redacted*
+        # lines and secret-hit locations — never the AST and never raw source
+        # lines: an AST embeds raw string constants, i.e. secret literals, so
+        # it must not land in a cache file. The parse itself is re-run on every
+        # analysis; for the CPython parser that cost is small next to the
+        # indexing walkers (which were never cached).
         cached = self.cache.load(rel, source)
         if cached is not None:
             for hit in cached.get("secret_hits", []):
@@ -343,43 +348,36 @@ class Analyzer:
             if cached.get("parse_error"):
                 self.parse_errors.append({"file": rel, **cached["parse_error"]})
                 return
-            tree = cached["tree"]
-            lines = cached["lines"]
+            hits = cached.get("secret_hits", [])
+            lines = cached.get("lines") or []
         else:
-            try:
-                tree = ast.parse(source, filename=rel)
-            except SyntaxError as exc:
-                self.parse_errors.append({"file": rel, "line": exc.lineno, "error": exc.msg})
-                self.cache.misses += 1
-                self.cache.store(rel, source, {"parse_error": {"line": exc.lineno, "error": exc.msg}})
-                return
-            except RecursionError:
-                # CPython's C-level AST construction has its own recursion guard
-                # (independent of sys.setrecursionlimit); a file that exceeds it
-                # — usually one machine-generated expression — is skipped with a
-                # parse error instead of failing the whole analysis.
-                msg = "too deeply nested for the Python parser; file skipped"
-                self.parse_errors.append({"file": rel, "line": None, "error": msg})
-                self.cache.misses += 1
-                self.cache.store(rel, source, {"parse_error": {"line": None, "error": msg}})
-                return
-            lines = source.splitlines()
+            lines = [redact(line)[0] for line in source.splitlines()]
             hits = []
             for h in find_secrets(source):
                 text, _ = redact(lines[h["line"] - 1].strip()) if 0 < h["line"] <= len(lines) else ("", None)
                 hits.append({"line": h["line"], "snippet": text[:220]})
+        try:
+            tree = ast.parse(source, filename=rel)
+        except SyntaxError as exc:
+            self.parse_errors.append({"file": rel, "line": exc.lineno, "error": exc.msg})
             self.cache.misses += 1
-            try:
-                self.cache.store(rel, source, {"tree": tree, "lines": lines, "secret_hits": hits})
-            except RecursionError:
-                # Pickling a very deeply nested AST recurses per AST level and
-                # hits CPython's C-level recursion guard, which no
-                # sys.setrecursionlimit can lift. The cache is an incremental-
-                # analysis optimisation only: analyse the file from its parsed
-                # tree and skip caching it.
-                pass
-            for hit in hits:
-                self.secret_hits.append({**hit, "file": rel})
+            self.cache.store(rel, source, {"parse_error": {"line": exc.lineno, "error": exc.msg}})
+            return
+        except RecursionError:
+            # CPython's C-level AST construction has its own recursion guard
+            # (independent of sys.setrecursionlimit); a file that exceeds it
+            # — usually one machine-generated expression — is skipped with a
+            # parse error instead of failing the whole analysis.
+            msg = "too deeply nested for the Python parser; file skipped"
+            self.parse_errors.append({"file": rel, "line": None, "error": msg})
+            self.cache.misses += 1
+            self.cache.store(rel, source, {"parse_error": {"line": None, "error": msg}})
+            return
+        if cached is None:
+            self.cache.misses += 1
+            self.cache.store(rel, source, {"lines": lines, "secret_hits": hits})
+        for hit in hits:
+            self.secret_hits.append({**hit, "file": rel})
         name = self._module_name(rel)
         base = rel.split("/")[-1]
         is_test = base.startswith("test_") or base.endswith("_test.py") or base == "conftest.py"
@@ -1312,7 +1310,9 @@ class Analyzer:
             if isinstance(call.func, ast.Attribute) and call.func.attr in ("execute", "executemany", "executescript") and call.args:
                 s = const_str(call.args[0])
                 if s and SQL_RE.match(s):
-                    sql.append({"line": call.lineno, "statement": " ".join(s.split())[:160]})
+                    # redact before truncation: SQL literals can embed secrets
+                    redacted = redact(" ".join(s.split()))[0]
+                    sql.append({"line": call.lineno, "statement": redacted[:160]})
         if sql:
             comp["data"]["sql"] = sql
         for var, line, has_default, tries in fn.env_reads:
@@ -1577,5 +1577,5 @@ class Analyzer:
 def analyse_project(root: Path, progress=None, tree: dict | None = None,
                     cache_dir: Path | None = None, use_cache: bool = True) -> dict:
     cache_dir = cache_dir if cache_dir is not None else default_cache_dir(root)
-    cache = FileCache(Path(cache_dir) / "py" if cache_dir else None, use_cache=use_cache, fmt="pickle")
+    cache = FileCache(Path(cache_dir) / "py" if cache_dir else None, use_cache=use_cache)
     return Analyzer(root, tree=tree, cache=cache).run(progress)
