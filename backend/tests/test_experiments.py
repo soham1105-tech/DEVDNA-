@@ -265,3 +265,70 @@ def test_stale_queued_experiment_fails_on_startup_recovery(client, sample_projec
         assert untouched.status == "prediction_confirmed" and untouched.error is None
     finally:
         db.close()
+
+
+def test_dependency_requirements_translates_poetry_constraints(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.poetry.dependencies]\npython = "^3.11"\nfoo = "^1.2.3"\nbar = "~1.2.3"\n',
+        encoding="utf-8",
+    )
+    assert runner._dependency_requirements(tmp_path) == "foo>=1.2.3,<2.0.0\nbar>=1.2.3,<1.3.0"
+
+
+def test_dependency_requirements_rejects_pipfile_star(tmp_path):
+    (tmp_path / "Pipfile.lock").write_text(
+        '{"default": {"requests": {"version": "*"}}, "develop": {}}', encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="wildcard"):
+        runner._dependency_requirements(tmp_path)
+
+
+def test_build_sandbox_rejects_risky_requirements_before_pip(tmp_path, monkeypatch):
+    """--index-url, wildcard and git+ specs raise before any subprocess runs,
+    so nothing unsafe ever reaches pip or docker."""
+    (tmp_path / "requirements.txt").write_text(
+        "--index-url https://evil.example.com/simple\n"
+        "foo*\n"
+        "bar @ git+https://github.com/evil/evil\n",
+        encoding="utf-8",
+    )
+    called = []
+    monkeypatch.setattr(runner.subprocess, "run", lambda command, **kwargs: called.append(command))
+
+    with pytest.raises(ValueError):
+        runner._build_sandbox_image(tmp_path, tmp_path)
+
+    assert called == []  # pip download and docker build were never invoked
+
+
+def test_build_sandbox_vendors_wheels_and_builds_offline(tmp_path, monkeypatch):
+    """A normal pinned requirements.txt vendors binary wheels on the host and
+    the docker build runs with --network=none; no index options anywhere."""
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "requirements.txt").write_text("fastapi==0.115.0\n", encoding="utf-8")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        import subprocess as sp
+        return sp.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    image = runner._build_sandbox_image(source, workdir)
+
+    assert image.startswith("devdna-sandbox:")
+    vendor_cmd, build_cmd = calls[0], calls[1]
+    assert vendor_cmd[1:3] == ["-m", "pip"] and "download" in vendor_cmd
+    assert "--only-binary=:all:" in vendor_cmd  # wheels only: no setup.py execution
+    assert "--index-url" not in vendor_cmd and "--extra-index-url" not in vendor_cmd
+    assert "--network=none" in build_cmd and build_cmd[0] == "docker"
+
+    context = workdir / "image-context"
+    reqs = (context / "requirements.txt").read_text(encoding="utf-8")
+    assert reqs == "fastapi==0.115.0\npytest>=8.3\n"
+    assert "--index-url" not in reqs
+    assert (context / "wheels").is_dir()

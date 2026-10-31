@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 from app.analyzer.cache import FileCache, default_cache_dir
 from app.analyzer.ingest import scan_tree
 from app.analyzer.redact import find_secrets, redact
+from app.services.depspec import parse_requirements_text
 
 BUILTIN_NAMES = set(dir(builtins))
 HTTP_VERBS = {"get", "post", "put", "patch", "delete", "options", "head"}
@@ -1540,21 +1541,27 @@ class Analyzer:
             except OSError:
                 continue
             if name == "requirements.txt":
-                for line in text.splitlines():
-                    line = line.split("#")[0].strip()
-                    if line and not line.startswith("-"):
-                        pkg = re.split(r"[<>=!~\[; ]", line, maxsplit=1)[0]
-                        deps.append({"name": pkg, "spec": line[len(pkg):].strip(), "manifest": rel})
+                # the shared strict parser sanitises the display the same way
+                # the experiment sandbox parses these lines
+                parsed = parse_requirements_text(text, source=rel, strict=False)
+                deps.extend({"name": e["name"], "spec": e["spec"], "manifest": rel} for e in parsed.entries)
             elif name == "pyproject.toml":
                 try:
                     data = tomllib.loads(text)
                 except tomllib.TOMLDecodeError:
                     continue
-                for line in data.get("project", {}).get("dependencies", []):
-                    pkg = re.split(r"[<>=!~\[; ]", line, maxsplit=1)[0]
-                    deps.append({"name": pkg, "spec": line[len(pkg):].strip(), "manifest": rel})
+                candidates = list(data.get("project", {}).get("dependencies", []))
                 for pkg, spec in data.get("tool", {}).get("poetry", {}).get("dependencies", {}).items():
-                    deps.append({"name": pkg, "spec": str(spec), "manifest": rel})
+                    if pkg.lower() == "python":
+                        continue
+                    if isinstance(spec, str):
+                        candidates.append(f"{pkg} {spec}".strip())
+                    elif isinstance(spec, dict):
+                        extras = spec.get("extras", [])
+                        extras_part = f"[{','.join(extras)}]" if extras else ""
+                        candidates.append(f"{pkg}{extras_part} {spec.get('version', '')}".strip())
+                parsed = parse_requirements_text("\n".join(candidates), source=rel, strict=False)
+                deps.extend({"name": e["name"], "spec": e["spec"], "manifest": rel} for e in parsed.entries)
             elif name == "package.json":
                 import json
                 try:

@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +26,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from app.analyzer.redact import redact
+from app.services.depspec import DependencySpecError, parse_requirements_file, parse_requirements_text
 from app.config import settings
 
 HARNESS_DIR = Path(__file__).resolve().parent / "harness"
@@ -110,39 +110,26 @@ def _posix_limits():  # pragma: no cover - not available on Windows
 
 
 def _dependency_requirements(project_dir: Path) -> str:
-    """Return installable dependencies from the project's most specific manifest."""
+    """Return the project's pinned, sanitised dependency lines.
+
+    Uses the shared strict spec parser: only `name[extras] spec` lines survive,
+    Poetry caret/tilde constraints are translated (never widened), and anything
+    that could redirect package sources or execute code raises
+    DependencySpecError before pip ever runs.
+    """
     project_dir = project_dir.resolve()
     requirements = project_dir / "requirements.txt"
     if requirements.is_file():
-        visited: set[Path] = set()
+        parsed = parse_requirements_file(requirements, project_dir)
+        return "\n".join(parsed.lines)
 
-        def read_requirements(path: Path) -> list[str]:
-            path = path.resolve(strict=True)
-            if project_dir not in path.parents and path != project_dir:
-                raise ValueError(f"Dependency include escapes the project directory: {path.name}")
-            if path in visited:
-                raise ValueError(f"Circular dependency include in {path.name}")
-            visited.add(path)
-            lines = []
-            for line in path.read_text(encoding="utf-8").splitlines():
-                match = re.match(r"^\s*(?:-r|--requirement(?:=|\s+))\s*(.+?)\s*$", line)
-                if match:
-                    include = match.group(1).strip().strip("\"'")
-                    lines.extend(read_requirements(path.parent / include))
-                elif line.strip() and not re.fullmatch(r"(?:-e|--editable(?:=|\s+))\s*\.\/?(?:\[[^\]]+\])?", line.strip()):
-                    lines.append(line)
-            visited.remove(path)
-            return lines
-
-        return "\n".join(read_requirements(requirements))
-
+    candidates: list[str] = []
     uv_lock = project_dir / "uv.lock"
     poetry_lock = project_dir / "poetry.lock"
     pipfile_lock = project_dir / "Pipfile.lock"
     pyproject = project_dir / "pyproject.toml"
     if uv_lock.is_file():
         lock = tomllib.loads(uv_lock.read_text(encoding="utf-8"))
-        entries = []
         for package in lock.get("package", []):
             source = package.get("source", {})
             if source and source.get("registry") not in (None, "https://pypi.org/simple"):
@@ -151,11 +138,9 @@ def _dependency_requirements(project_dir: Path) -> str:
             if name and version:
                 markers = package.get("resolution-markers", [])
                 marker = f"; {markers[0]}" if len(markers) == 1 else ""
-                entries.append(f"{name}=={version}{marker}")
-        return "\n".join(entries)
-    if poetry_lock.is_file():
+                candidates.append(f"{name}=={version}{marker}")
+    elif poetry_lock.is_file():
         lock = tomllib.loads(poetry_lock.read_text(encoding="utf-8"))
-        entries = []
         for package in lock.get("package", []):
             source = package.get("source", {})
             if source and source.get("type") not in ("legacy", "file"):
@@ -163,59 +148,78 @@ def _dependency_requirements(project_dir: Path) -> str:
             name, version = package.get("name"), package.get("version")
             if name and version:
                 marker = f"; {package['marker']}" if package.get("marker") else ""
-                entries.append(f"{name}=={version}{marker}")
-        return "\n".join(entries)
-    if pipfile_lock.is_file():
+                candidates.append(f"{name}=={version}{marker}")
+    elif pipfile_lock.is_file():
         lock = json.loads(pipfile_lock.read_text(encoding="utf-8"))
-        entries = []
         for section in ("default", "develop"):
             for name, package in lock.get(section, {}).items():
                 version = package.get("version")
                 if version:
                     marker = f"; {package['markers']}" if package.get("markers") else ""
-                    entries.append(f"{name}{version}{marker}")
-        return "\n".join(entries)
-    if pyproject.is_file():
+                    candidates.append(f"{name}{version}{marker}")
+    elif pyproject.is_file():
         config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        project = config.get("project", {})
-        dependencies = list(project.get("dependencies", []))
+        candidates.extend(config.get("project", {}).get("dependencies", []))
         poetry = config.get("tool", {}).get("poetry", {}).get("dependencies", {})
         for name, value in poetry.items():
             if name.lower() == "python":
                 continue
             if isinstance(value, str):
-                spec = value
+                candidates.append(f"{name} {value}".strip())
             elif isinstance(value, dict):
                 version = value.get("version", "")
-                spec = version
                 extras = value.get("extras", [])
-                if extras:
-                    name += f"[{','.join(extras)}]"
+                extras_part = f"[{','.join(extras)}]" if extras else ""
                 marker = value.get("markers")
+                spec = f"{name}{extras_part} {version}".strip()
                 if marker:
                     spec += f"; {marker}"
                 if value.get("optional") and not extras:
                     continue
-            else:
-                continue
-            spec = spec.replace("^", ">=").replace("~", ">=")
-            dependencies.append(f"{name}{spec}" if spec.startswith(("<", ">", "=", "!", "~")) else f"{name}=={spec}" if spec else name)
-        return "\n".join(dependencies)
-    return ""
+                candidates.append(spec)
+    parsed = parse_requirements_text("\n".join(candidates), source=pyproject.name if pyproject.is_file() else "lockfile")
+    return "\n".join(parsed.lines)
 
 
 def _build_sandbox_image(project_dir: Path, workdir: Path) -> str:
-    """Build a throwaway sandbox image with the repository's declared dependencies."""
+    """Build a throwaway sandbox image with the repository's declared dependencies.
+
+    The image is built fully offline: wheels are vendored on the (trusted) host
+    from the sanitised, pinned spec list — binary wheels only, so no untrusted
+    setup.py ever executes — and the docker build itself runs with
+    --network=none, so the image build can neither execute project code nor
+    reach the network.
+    """
+    deps = _dependency_requirements(project_dir)
+    requirements = deps + "\npytest>=8.3\n"
+
     context = workdir / "image-context"
     context.mkdir()
-    (context / "requirements.txt").write_text(_dependency_requirements(project_dir), encoding="utf-8")
-    image = f"devdna-sandbox:{uuid.uuid4().hex[:12]}"
-    dockerfile = Path(__file__).resolve().parents[2] / "sandbox" / "Dockerfile"
-    proc = subprocess.run(
-        ["docker", "build", "--tag", image, "--file", str(dockerfile), str(context)],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-        timeout=settings.experiment_timeout_s,
-    )
+    (context / "requirements.txt").write_text(requirements, encoding="utf-8")
+    (context / "wheels").mkdir()
+    try:
+        vendored = subprocess.run(
+            [sys.executable, "-m", "pip", "download", "--only-binary=:all:",
+             "--platform", "manylinux2014_x86_64", "--platform", "manylinux2014",
+             "--implementation", "cp", "--python-version", "3.12", "--abi", "cp312",
+             "--dest", str(context / "wheels"), str(context / "requirements.txt")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=settings.experiment_timeout_s,
+        )
+        if vendored.returncode:
+            raise RuntimeError(
+                "Could not vendor sandbox dependencies (binary wheels only): "
+                f"{(vendored.stderr or vendored.stdout)[-2000:]}"
+            )
+        image = f"devdna-sandbox:{uuid.uuid4().hex[:12]}"
+        dockerfile = Path(__file__).resolve().parents[2] / "sandbox" / "Dockerfile"
+        proc = subprocess.run(
+            ["docker", "build", "--network=none", "--tag", image, "--file", str(dockerfile), str(context)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=settings.experiment_timeout_s,
+        )
+    except DependencySpecError:
+        raise
     if proc.returncode:
         raise RuntimeError(f"Could not build experiment sandbox image: {(proc.stderr or proc.stdout)[-2000:]}")
     return image
