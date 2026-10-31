@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app import db as dbmod
 from app.api import ai, architecture, experiments, guard, projects, system, traces
+from app.api.experiments import recover_stale_experiments
 from app.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -21,6 +22,7 @@ async def lifespan(app: FastAPI):
     if dbmod.engine is None:
         dbmod.init_engine()
     settings.projects_dir.mkdir(parents=True, exist_ok=True)
+    recover_stale_experiments()
     if not settings.api_token:
         logging.getLogger("devdna").warning(
             "DEVDNA_API_TOKEN is not set - the API is unauthenticated and intended for localhost use only."

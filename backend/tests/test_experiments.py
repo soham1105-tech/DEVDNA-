@@ -221,3 +221,46 @@ def test_real_db_experiment_on_sample(sample_graph):
     c = compare(impact, obs)
     assert c["status"] == "prediction_confirmed", c
     assert all(r["fault_marker"] for r in c["rows"] if r["observed"] in ("failed", "error"))
+
+
+def test_stale_queued_experiment_fails_on_startup_recovery(client, sample_project):
+    """An experiment left queued by a previous process becomes failed with the
+    restart message when the new process starts. It is kept, not re-run or
+    deleted."""
+    from datetime import datetime, timezone
+
+    from app import db as dbmod
+    from app.api.experiments import recover_stale_experiments
+    from app.models import Experiment
+
+    pred = client.post(f"/api/projects/{sample_project}/predictions",
+                       json={"scenario": "db_unavailable", "target_id": "database:sqlite"}).json()
+
+    db = dbmod.SessionLocal()
+    try:
+        stale = Experiment(project_id=sample_project, prediction_id=pred["id"],
+                           status="queued", approved_at=datetime.now(timezone.utc))
+        db.add(stale)
+        db.commit()
+        exp_id = stale.id
+        # a finished experiment from before must be left untouched
+        done = Experiment(project_id=sample_project, prediction_id=pred["id"], status="prediction_confirmed")
+        db.add(done)
+        db.commit()
+        done_id = done.id
+    finally:
+        db.close()
+
+    recovered = recover_stale_experiments()
+
+    assert recovered == 1
+    db = dbmod.SessionLocal()
+    try:
+        exp = db.get(Experiment, exp_id)
+        assert exp.status == "failed"
+        assert exp.error == "Server restarted before this experiment finished — please re-run it."
+        assert exp.finished_at is not None
+        untouched = db.get(Experiment, done_id)
+        assert untouched.status == "prediction_confirmed" and untouched.error is None
+    finally:
+        db.close()

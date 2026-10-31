@@ -25,6 +25,35 @@ router = APIRouter(prefix="/api", tags=["predictions & experiments"])
 log = logging.getLogger("devdna.experiments")
 _exec_lock = threading.Lock()  # one experiment at a time per server process
 
+STALE_STATUSES = ("queued", "running")
+RESTART_ERROR = "Server restarted before this experiment finished — please re-run it."
+
+
+def recover_stale_experiments() -> int:
+    """Mark experiments left queued/running by a previous process as failed.
+
+    A restart kills the background task that would have finished them, so they
+    could never leave those states on their own. They are kept and marked
+    failed with a re-run hint — never silently re-run, never deleted. Safe to
+    call on every startup; a no-op when nothing is stale.
+    """
+    db = dbmod.SessionLocal()
+    try:
+        rows = db.scalars(select(Experiment).where(Experiment.status.in_(STALE_STATUSES))).all()
+        for exp in rows:
+            exp.status = "failed"
+            exp.error = RESTART_ERROR
+            exp.finished_at = datetime.now(timezone.utc)
+        if rows:
+            db.commit()
+            log.warning("Marked %d stale queued/running experiment(s) as failed after restart.", len(rows))
+        return len(rows)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
 
 @router.post("/projects/{project_id}/predictions", status_code=201)
 def create_prediction(project_id: str, body: PredictionIn, db: Session = Depends(get_db)):
