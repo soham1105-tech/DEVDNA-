@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.ai.evidence import source_excerpt
-from app.api.deps import get_project, require_run
+from app.api.deps import get_project, require_run, pagination_params
 from app.db import get_db
 from app.graph.engine import PROPAGATING, SCENARIOS, neighbourhood
 from app.models import AIInteraction, AnalysisRun, Component, Experiment, Finding, FindingSuppression, FindingSuppressionAudit, Prediction
@@ -61,11 +61,12 @@ def component_detail(project_id: str, component_id: str, db: Session = Depends(g
 
 
 @router.get("/projects/{project_id}/findings")
-def findings(project_id: str, db: Session = Depends(get_db)):
+def findings(project_id: str, db: Session = Depends(get_db), params: tuple[int, int] = Depends(pagination_params)):
+    limit, offset = params
     p = get_project(db, project_id)
     if not p.latest_run_id:
         return []
-    rows = db.scalars(select(Finding).where(Finding.run_id == p.latest_run_id)).all()
+    rows = db.scalars(select(Finding).where(Finding.run_id == p.latest_run_id).offset(offset).limit(limit)).all()
     suppressions = suppression_map(db, rows)
     order = {"high": 0, "medium": 1, "low": 2, "info": 3}
     return sorted([finding_out(f, suppressions.get(finding_fingerprint(f))) for f in rows],

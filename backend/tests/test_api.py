@@ -428,3 +428,84 @@ def test_rate_limit_burst(client):
     finally:
         guard.set_rate_limit(None)
         guard.reset_rate_limit()
+
+
+def test_list_pagination_validation(client, sample_project):
+    """Negative or non-integer limit/offset are rejected with 422."""
+    for url in ("/api/projects?limit=-1", "/api/projects?offset=-3", "/api/projects?limit=abc"):
+        assert client.get(url).status_code == 422, url
+    assert client.get("/api/projects?limit=2&offset=0").status_code == 200
+
+
+def test_predictions_pagination_default_limit_offset_and_clamp(client, sample_project):
+    """Default page is the first 50 rows; limit and offset slice the same
+    ordering; limit above 200 clamps to 200."""
+    from app.api import guard
+
+    ids = []
+    guard.set_rate_limit(100000)  # this test legitimately exceeds 120 requests
+    try:
+        for _ in range(201):
+            r = client.post(f"/api/projects/{sample_project}/predictions",
+                            json={"scenario": "db_unavailable", "target_id": "database:sqlite"})
+            assert r.status_code == 201
+            ids.append(r.json()["id"])
+    finally:
+        guard.set_rate_limit(None)
+        guard.reset_rate_limit()
+
+    base = f"/api/projects/{sample_project}/predictions"
+
+    # created_at has ~15ms granularity on Windows, so rapid creations can tie;
+    # ordering is created_at desc with id as the deterministic tiebreaker.
+
+    default = client.get(base).json()
+    assert len(default) == 50 and len({p["id"] for p in default}) == 50
+    stamps = [p["created_at"] for p in default]
+    assert stamps == sorted(stamps, reverse=True)  # newest first, ties allowed
+
+    two = client.get(f"{base}?limit=2").json()
+    assert two == client.get(f"{base}?limit=2").json()  # pagination is stable
+
+    page2 = client.get(f"{base}?limit=2&offset=2").json()
+    assert page2 == client.get(f"{base}?limit=2&offset=2").json()
+    assert not ({p["id"] for p in two} & {p["id"] for p in page2})
+
+    clamped = client.get(f"{base}?limit=999").json()
+    # the project holds 201 fresh rows plus earlier tests' predictions
+    # (>= 201 total), so a passed-through limit=999 would return more than
+    # 200 rows: this proves the clamp.
+    assert len(clamped) == 200 and len({p["id"] for p in clamped}) == 200
+
+    # pages tile the full list without overlap
+    tail = client.get(f"{base}?limit=200&offset=200").json()
+    assert 1 <= len(tail) <= 200
+    assert not ({p["id"] for p in clamped} & {p["id"] for p in tail})
+
+
+def test_experiments_pagination(client):
+    """The experiments list honours limit/offset on its stable ordering."""
+    from datetime import timedelta
+
+    from app import db as dbmod
+    from app.models import Experiment
+
+    # a fresh project so no other rows interfere with the ordering
+    project = client.post("/api/projects/sample").json()["project"]["id"]
+    pred = client.post(f"/api/projects/{project}/predictions",
+                       json={"scenario": "db_unavailable", "target_id": "database:sqlite"}).json()
+    db = dbmod.SessionLocal()
+    try:
+        base = datetime.now(timezone.utc)
+        for i in range(3):
+            db.add(Experiment(project_id=project, prediction_id=pred["id"], status="prediction_confirmed",
+                              created_at=base - timedelta(minutes=i)))
+        db.commit()
+    finally:
+        db.close()
+
+    base_url = f"/api/projects/{project}/experiments"
+    rows = client.get(base_url).json()
+    assert len(rows) == 3
+    assert client.get(f"{base_url}?limit=2").json() == rows[:2]
+    assert client.get(f"{base_url}?limit=2&offset=1").json() == rows[1:3]

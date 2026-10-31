@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import db as dbmod
-from app.api.deps import get_project, require_run
+from app.api.deps import get_project, pagination_params, require_run
 from app.db import get_db
 from app.experiments.runner import choose_mode, compare, execute, fault_spec
 from app.graph.engine import compute_impact
@@ -122,9 +122,11 @@ def create_prediction(project_id: str, body: PredictionIn, db: Session = Depends
 
 
 @router.get("/projects/{project_id}/predictions")
-def list_predictions(project_id: str, db: Session = Depends(get_db)):
+def list_predictions(project_id: str, db: Session = Depends(get_db), params: tuple[int, int] = Depends(pagination_params)):
+    limit, offset = params
     get_project(db, project_id)
-    rows = db.scalars(select(Prediction).where(Prediction.project_id == project_id).order_by(Prediction.created_at.desc())).all()
+    rows = db.scalars(select(Prediction).where(Prediction.project_id == project_id)
+                      .order_by(Prediction.created_at.desc(), Prediction.id.desc()).offset(offset).limit(limit)).all()
     return [prediction_out(x) for x in rows]
 
 
@@ -189,9 +191,11 @@ def start_experiment(prediction_id: str, body: ExperimentIn, background: Backgro
 
 
 @router.get("/projects/{project_id}/experiments")
-def list_experiments(project_id: str, db: Session = Depends(get_db)):
+def list_experiments(project_id: str, db: Session = Depends(get_db), params: tuple[int, int] = Depends(pagination_params)):
+    limit, offset = params
     get_project(db, project_id)
-    rows = db.scalars(select(Experiment).where(Experiment.project_id == project_id).order_by(Experiment.created_at.desc())).all()
+    rows = db.scalars(select(Experiment).where(Experiment.project_id == project_id)
+                      .order_by(Experiment.created_at.desc(), Experiment.id.desc()).offset(offset).limit(limit)).all()
     out = []
     for e in rows:
         item = experiment_out(e)

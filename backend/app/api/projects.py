@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analyzer.ingest import ZipSecurityError, safe_extract_zip, scan_tree
-from app.api.deps import get_project
+from app.api.deps import get_project, pagination_params
 from app.config import settings
 from app.db import get_db
 from app.models import (
@@ -141,8 +141,9 @@ def _create_zip_project(
 
 
 @router.get("/projects")
-def list_projects(db: Session = Depends(get_db)):
-    projects = db.scalars(select(Project).order_by(Project.created_at.desc())).all()
+def list_projects(db: Session = Depends(get_db), params: tuple[int, int] = Depends(pagination_params)):
+    limit, offset = params
+    projects = db.scalars(select(Project).order_by(Project.created_at.desc(), Project.id.desc()).offset(offset).limit(limit)).all()
     return [project_out(p, db.get(AnalysisRun, p.latest_run_id) if p.latest_run_id else None) for p in projects]
 
 
