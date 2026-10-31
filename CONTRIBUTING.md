@@ -58,7 +58,7 @@ Before submitting any Pull Request, ensure all automated tests pass cleanly with
 cd backend
 python -m pytest -v
 ```
-*(All 69 unit and integration tests must pass).*
+*(All 139 unit and integration tests must pass).*
 
 ### Frontend Tests & Production Build
 ```bash
@@ -66,7 +66,7 @@ cd frontend
 npm test -- --run
 npm run build
 ```
-*(All 12 component and utility tests must pass, and the Vite production build must succeed).*
+*(All 22 component and utility tests must pass, and the Vite production build must succeed).*
 
 ---
 

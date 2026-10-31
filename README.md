@@ -39,7 +39,7 @@ In growing Python systems, answering a deceptively simple question is notoriousl
 DevDNA constructs a **Neuro-Symbolic Digital Twin** of any Python codebase. Unlike naive AI wrappers that hallucinate call graphs, or purely static tools that cannot reason about semantic runtime behavior, DevDNA fuses both paradigms:
 
 * **The Symbolic Engine (AST MultiDiGraph):** Mathematically maps dependencies, call sites, and exception handlers directly from syntax trees with zero hallucinations.
-* **The Neural Engine (Google Gemma 4):** Visually ingests architecture diagrams for drift detection, synthesizes arbitrary failure scenarios from natural language, calculates cascading runtime risk, and reconciles empirical test results.
+* **The Neural Engine (Google Gemma 4):** Visually ingests architecture diagrams for drift detection, synthesizes arbitrary failure scenarios from natural language, and reconciles empirical test results. The cascading risk score itself is a deterministic heuristic computed from the dependency graph — no AI model is used for this score, and it is not a failure probability.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -96,7 +96,7 @@ DevDNA constructs a **Neuro-Symbolic Digital Twin** of any Python codebase. Unli
    * Allows developers to express arbitrary failure modes in natural language (e.g., *"Redis connection drop & cache eviction storm"* or *"JWT token expiration cascade"*).
    * Gemma 4 inspects the AST code, identifies target components and exception hierarchies, and generates runtime fault specifications.
 3. **Neuro-Symbolic Blast Radius Engine:**
-   * Combines dual reverse graph reachability bounds with Gemma 4 runtime risk evaluation (0-100 risk score, semantic failure mechanisms, and unverified route coverage gaps).
+   * Combines dual reverse graph reachability bounds with a deterministic heuristic risk score (0-100; heuristic score, not a failure probability — no AI model is used for this score), with Gemma 4 contributing semantic failure mechanisms and unverified route coverage gap analysis.
    * Differentiates **Definite** paths from **Possible** (conditionally handled) paths.
 4. **Empirical What-If Lab (Controlled Fault Injection):**
    * Executes the repository's real `pytest` suite twice: baseline healthy run, then faulted run using the `devdna_faults` pytest plugin.
