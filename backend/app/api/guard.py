@@ -1,27 +1,37 @@
 """Opt-in API guard: token auth and a per-IP request budget.
 
 When `settings.api_token` is set, every `/api` route except `/api/health`
-requires an `X-DevDNA-Token` header that matches it. When it is empty the
-server stays in local, unauthenticated mode (the startup log warns about it).
+requires an `X-DevDNA-Token` header that matches it — compared with
+`hmac.compare_digest`, never `!=` — and the schema endpoints (`/docs`,
+`/openapi.json`, `/redoc`) are guarded too, so the API schema does not leak
+from a token-protected server. When no token is set the server stays in
+local, unauthenticated mode, which must be acknowledged with
+`DEVDNA_LOCAL_ONLY=true` or the server refuses to start.
 
 The rate limit is a simple in-memory sliding window per client IP; it counts
-every `/api` request, including rejected ones, so token guessing is throttled
+every guarded request, including rejected ones, so token guessing is throttled
 too. State lives in this process only — it resets on restart and is not
 shared across workers.
 
 Implemented as a pure ASGI middleware (deliberately not
 `BaseHTTPMiddleware`, which can deadlock sync endpoints under anyio).
+Every 401 and 429 rejection is logged with the client IP and path.
 """
 from __future__ import annotations
 
+import hmac
 import json
+import logging
 import threading
 import time
 
 from app.config import settings
 
+log = logging.getLogger("devdna.guard")
+
 TOKEN_HEADER = "X-DevDNA-Token"
 _WINDOW_S = 60.0
+_SCHEMA_PATHS = {"/docs", "/openapi.json", "/redoc"}
 
 _lock = threading.Lock()
 _hits: dict[str, list[float]] = {}
@@ -83,19 +93,26 @@ class GuardMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             path = scope.get("path", "")
-            if path.startswith("/api"):
-                # the budget covers every /api route, including health, so
+            schema_path = path in _SCHEMA_PATHS or path.rstrip("/") in _SCHEMA_PATHS
+            if path.startswith("/api") or schema_path:
+                # the budget covers every guarded route, including health, so
                 # token guessing cannot run faster than the limit either
-                if not _allow(_client_ip(scope)):
+                ip = _client_ip(scope)
+                if not _allow(ip):
+                    log.warning("429 rate_limited %s %s", ip, path)
                     await _reject(send, 429, "rate_limited",
                                   "Too many requests. Slow down and retry in a minute.")
                     return
-                # only auth is exempt for /api/health
+                # only auth is exempt for /api/health; schema endpoints are
+                # guarded in token mode so the API schema cannot leak
                 token = settings.api_token
-                if token and path.rstrip("/") != "/api/health":
+                auth_exempt = path.startswith("/api") and path.rstrip("/") == "/api/health"
+                if token and not auth_exempt:
                     sent = {k.decode("latin-1").lower(): v.decode("latin-1")
                             for k, v in scope.get("headers", [])}
-                    if sent.get(TOKEN_HEADER.lower()) != token:
+                    supplied = sent.get(TOKEN_HEADER.lower(), "")
+                    if not supplied or not hmac.compare_digest(supplied, token):
+                        log.warning("401 unauthorized %s %s", ip, path)
                         await _reject(send, 401, "unauthorized",
                                       f"Missing or invalid {TOKEN_HEADER} header.")
                         return

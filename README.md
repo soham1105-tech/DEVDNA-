@@ -245,7 +245,7 @@ In `frontend/.env.local`, configure:
 VITE_AST_ENGINE_URL=http://127.0.0.1:8001
 ```
 
-The default AST Engine URL is `http://127.0.0.1:8001`; use `VITE_AST_ENGINE_URL` when it runs elsewhere. The AST Engine permits the local Vite origins by default. For another frontend origin, set `AST_ENGINE_CORS_ORIGINS` on the AST Engine to a comma-separated list of allowed origins. In the Upload ZIP tab, enter a public GitHub repository URL and branch to import and analyze it directly, or provide a ZIP file. In Local folder setup, the optional GitHub URL links that project to its AST complexity score.
+The default AST Engine URL is `http://127.0.0.1:8001`; use `VITE_AST_ENGINE_URL` when it runs elsewhere. Optionally set `AST_ENGINE_API_TOKEN` on the AST Engine to require an `X-DevDNA-Token` header on `/analyze/repo` (401 otherwise), and `AST_ENGINE_RATE_LIMIT_PER_MINUTE` (default 60) for its per-IP request budget. GitHub fetch failures surface distinctly: 404 for a missing repository or branch, 429 for GitHub rate limiting, 504 for a GitHub timeout. The AST Engine permits the local Vite origins by default. For another frontend origin, set `AST_ENGINE_CORS_ORIGINS` on the AST Engine to a comma-separated list of allowed origins. In the Upload ZIP tab, enter a public GitHub repository URL and branch to import and analyze it directly, or provide a ZIP file. In Local folder setup, the optional GitHub URL links that project to its AST complexity score.
 
 The standalone AST endpoint accepts a repository URL directly:
 ```text

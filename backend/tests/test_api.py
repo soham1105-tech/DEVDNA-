@@ -1,5 +1,7 @@
 import io
 import zipfile
+
+import pytest
 from datetime import datetime, timedelta, timezone
 
 from app import db as dbmod
@@ -509,3 +511,64 @@ def test_experiments_pagination(client):
     assert len(rows) == 3
     assert client.get(f"{base_url}?limit=2").json() == rows[:2]
     assert client.get(f"{base_url}?limit=2&offset=1").json() == rows[1:3]
+
+
+def test_cross_origin_preflight_allows_token_header(client, monkeypatch):
+    """A direct cross-origin frontend sends the token header; the CORS
+    preflight must list it as allowed so the browser passes it."""
+    monkeypatch.setattr(settings, "api_token", "secret-token-1")
+    r = client.options(
+        "/api/projects",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "x-devdna-token",
+        },
+    )
+    assert r.status_code == 200
+    assert "x-devdna-token" in r.headers.get("access-control-allow-headers", "").lower()
+
+
+def test_schema_endpoints_guarded_in_token_mode(client, monkeypatch):
+    """/docs, /openapi.json and /redoc leak the API surface; they require the
+    token when one is configured, like every other non-health route."""
+    monkeypatch.setattr(settings, "api_token", "secret-token-1")
+    for path in ("/docs", "/openapi.json", "/redoc"):
+        r = client.get(path)
+        assert r.status_code == 401, path
+        assert r.json()["error"]["code"] == "unauthorized"
+    assert client.get("/docs", headers={"X-DevDNA-Token": "secret-token-1"}).status_code == 200
+    assert client.get("/openapi.json", headers={"X-DevDNA-Token": "secret-token-1"}).status_code == 200
+
+
+def test_server_refuses_to_start_without_token_or_local_only(monkeypatch):
+    """No token + no DEVDNA_LOCAL_ONLY acknowledgement -> the server refuses
+    to start instead of silently serving an unauthenticated API."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    monkeypatch.setattr(settings, "api_token", "")
+    monkeypatch.setattr(settings, "local_only", False)
+    with pytest.raises(RuntimeError, match="DEVDNA_API_TOKEN is not set"):
+        with TestClient(app):
+            pass
+
+
+def test_unauthorized_and_rate_limited_attempts_are_logged(client, monkeypatch, caplog):
+    monkeypatch.setattr(settings, "api_token", "secret-token-1")
+    with caplog.at_level("WARNING", logger="devdna.guard"):
+        client.get("/api/projects")  # 401
+        from app.api import guard
+
+        guard.set_rate_limit(1)
+        try:
+            guard.reset_rate_limit()
+            client.get("/api/health")  # 200
+            client.get("/api/health")  # 429
+        finally:
+            guard.set_rate_limit(None)
+            guard.reset_rate_limit()
+    warnings = [r.getMessage() for r in caplog.records if r.name == "devdna.guard"]
+    assert any("401 unauthorized" in m and "/api/projects" in m for m in warnings)
+    assert any("429 rate_limited" in m and "/api/health" in m for m in warnings)

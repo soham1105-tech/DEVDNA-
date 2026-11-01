@@ -6,6 +6,7 @@ from pathlib import Path
 # Isolate every test session: temporary data dir/database, and never a real API key.
 _TMP = tempfile.mkdtemp(prefix="devdna-test-")
 os.environ["DEVDNA_DATA_DIR"] = _TMP
+os.environ["DEVDNA_LOCAL_ONLY"] = "true"  # tests run in acknowledged local mode
 os.environ.pop("GEMINI_API_KEY", None)
 os.environ.pop("GOOGLE_API_KEY", None)
 os.environ.pop("DEVDNA_ALLOWED_LOCAL_ROOTS", None)

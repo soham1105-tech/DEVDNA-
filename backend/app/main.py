@@ -23,9 +23,16 @@ async def lifespan(app: FastAPI):
         dbmod.init_engine()
     settings.projects_dir.mkdir(parents=True, exist_ok=True)
     recover_stale_experiments()
+    if not settings.api_token and not settings.local_only:
+        raise RuntimeError(
+            "DEVDNA_API_TOKEN is not set. Set a token to protect the API, or set "
+            "DEVDNA_LOCAL_ONLY=true to acknowledge that this server is unauthenticated "
+            "and intended for localhost use only."
+        )
     if not settings.api_token:
         logging.getLogger("devdna").warning(
-            "DEVDNA_API_TOKEN is not set - the API is unauthenticated and intended for localhost use only."
+            "DEVDNA_API_TOKEN is not set (DEVDNA_LOCAL_ONLY=true) - the API is "
+            "unauthenticated and intended for localhost use only."
         )
     yield
 
@@ -40,7 +47,8 @@ app = FastAPI(
 # responses still reach the browser with CORS headers attached.
 app.add_middleware(guard.GuardMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=False,
-                   allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["Content-Type"])
+                   allow_methods=["GET", "POST", "PATCH", "DELETE"],
+                   allow_headers=["Content-Type", "X-DevDNA-Token"])
 
 
 @app.exception_handler(HTTPException)

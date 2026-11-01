@@ -10,6 +10,7 @@ services:
       - backend-data:/data
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      DEVDNA_LOCAL_ONLY: "true"
 
   ast-engine:
     build: ./ast-engine
