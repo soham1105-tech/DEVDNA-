@@ -21,6 +21,7 @@ from app.models import Experiment, Finding, Prediction, Project
 from app.schemas import ChangedFilesIn, ExperimentIn, PredictionIn, RemediationIn
 from app.services.analysis import load_graph
 from app.services.change_impact import changed_files_impact
+from app.services.reliability import reliability_memory
 from app.services.remediation import verify_remediation
 from app.services.test_gaps import test_gaps
 from app.services.calibration import calibrate_impact, record_experiment_outcomes
@@ -292,6 +293,20 @@ def get_experiment(experiment_id: str, db: Session = Depends(get_db)):
     if not exp:
         raise HTTPException(404, detail={"code": "experiment_not_found", "message": "Experiment not found"})
     return experiment_out(exp)
+
+
+@router.get("/projects/{project_id}/reliability")
+def project_reliability(project_id: str, db: Session = Depends(get_db)):
+    """Reliability memory for one project: how its predictions fared against
+    observed experiments. Read-only aggregation of recorded outcomes."""
+    get_project(db, project_id)
+    return reliability_memory(db, project_id)
+
+
+@router.get("/reliability")
+def global_reliability(project_id: str | None = Query(None), db: Session = Depends(get_db)):
+    """Reliability memory across all projects (or one via ?project_id=)."""
+    return reliability_memory(db, project_id)
 
 
 @router.get("/calibration/stats")
