@@ -21,6 +21,7 @@ from app.models import Experiment, Prediction, Project
 from app.schemas import ChangedFilesIn, ExperimentIn, PredictionIn
 from app.services.analysis import load_graph
 from app.services.change_impact import changed_files_impact
+from app.services.test_gaps import test_gaps
 from app.services.calibration import calibrate_impact, record_experiment_outcomes
 from app.services.serialize import experiment_out, prediction_out, python_present
 
@@ -124,6 +125,19 @@ def create_prediction(project_id: str, body: PredictionIn, db: Session = Depends
     db.add(pred)
     db.commit()
     return prediction_out(pred)
+
+
+@router.get("/projects/{project_id}/test-gaps")
+def test_gaps_ep(project_id: str, db: Session = Depends(get_db)):
+    """Static test-gap map for the latest completed analysis, validated
+    against executed tests recorded by completed experiments. Read-only."""
+    p = get_project(db, project_id)
+    run = require_run(db, p)
+    _, _, g = load_graph(db, run.id)
+    result = test_gaps(db, g, p.id)
+    result["project"] = {"id": p.id, "name": p.name}
+    result["run_id"] = run.id
+    return result
 
 
 @router.post("/projects/{project_id}/impact/changed-files")
