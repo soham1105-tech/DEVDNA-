@@ -207,7 +207,7 @@ def _build_sandbox_image(project_dir: Path, workdir: Path) -> str:
             [sys.executable, "-m", "pip", "download", "--only-binary=:all:",
              "--platform", "manylinux2014_x86_64", "--platform", "manylinux2014",
              "--implementation", "cp", "--python-version", "3.12", "--abi", "cp312",
-             "--dest", str(context / "wheels"), str(context / "requirements.txt")],
+             "--dest", str(context / "wheels"), "-r", str(context / "requirements.txt")],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=settings.experiment_timeout_s,
         )

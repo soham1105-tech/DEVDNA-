@@ -346,6 +346,8 @@ def test_build_sandbox_vendors_wheels_and_builds_offline(tmp_path, monkeypatch):
     vendor_cmd, build_cmd = calls[0], calls[1]
     assert vendor_cmd[1:3] == ["-m", "pip"] and "download" in vendor_cmd
     assert "--only-binary=:all:" in vendor_cmd  # wheels only: no setup.py execution
+    assert "-r" in vendor_cmd
+    assert vendor_cmd[vendor_cmd.index("-r") + 1].endswith("requirements.txt")
     assert "--index-url" not in vendor_cmd and "--extra-index-url" not in vendor_cmd
     assert "--network=none" in build_cmd and build_cmd[0] == "docker"
 
