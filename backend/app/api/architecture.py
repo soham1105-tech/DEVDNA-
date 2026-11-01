@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi.responses import JSONResponse
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.ai.evidence import source_excerpt
@@ -63,15 +64,21 @@ def component_detail(project_id: str, component_id: str, db: Session = Depends(g
 
 @router.get("/projects/{project_id}/findings")
 def findings(project_id: str, db: Session = Depends(get_db), params: tuple[int, int] = Depends(pagination_params)):
+    """Findings, ordered by severity (then title) in SQL so paginated slices
+    are deterministic across pages. The total count ships in X-Total-Count."""
     limit, offset = params
     p = get_project(db, project_id)
     if not p.latest_run_id:
-        return []
-    rows = db.scalars(select(Finding).where(Finding.run_id == p.latest_run_id).offset(offset).limit(limit)).all()
+        return JSONResponse(content=[], headers={"X-Total-Count": "0"})
+    severity_order = case((Finding.severity == "high", 0), (Finding.severity == "medium", 1),
+                          (Finding.severity == "low", 2), else_=3)
+    total = db.scalar(select(func.count()).select_from(Finding).where(Finding.run_id == p.latest_run_id))
+    rows = db.scalars(select(Finding).where(Finding.run_id == p.latest_run_id)
+                      .order_by(severity_order, Finding.title)
+                      .offset(offset).limit(limit)).all()
     suppressions = suppression_map(db, rows)
-    order = {"high": 0, "medium": 1, "low": 2, "info": 3}
-    return sorted([finding_out(f, suppressions.get(finding_fingerprint(f))) for f in rows],
-                  key=lambda f: (order.get(f["severity"], 9), f["title"]))
+    items = [finding_out(f, suppressions.get(finding_fingerprint(f))) for f in rows]
+    return JSONResponse(content=items, headers={"X-Total-Count": str(total)})
 
 
 @router.patch("/findings/{finding_id}")

@@ -11,7 +11,7 @@
 
 **Predict failure blast radius in Python codebases, and prove or disprove the prediction by injecting faults into real pytest test suites.**
 
-[Explore Architecture](docs/ARCHITECTURE.md) • [Algorithm Reference](docs/ALGORITHM.md) • [Security & Isolation](docs/SECURITY.md) • [Contributing](CONTRIBUTING.md)
+[Explore Architecture](docs/ARCHITECTURE.md) • [Algorithm Reference](docs/ALGORITHM.md) • [Security & Isolation](docs/SECURITY.md) • [Production Checklist](docs/PRODUCTION_CHECKLIST.md) • [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -34,16 +34,16 @@ In growing Python systems, answering a deceptively simple question is notoriousl
 
 ---
 
-## 2. The Solution: A Neuro-Symbolic Software Digital Twin
+## 2. The Solution: A Deterministic Digital Twin with an AI Assist
 
-DevDNA constructs a **Neuro-Symbolic Digital Twin** of any Python codebase. Unlike naive AI wrappers that hallucinate call graphs, or purely static tools that cannot reason about semantic runtime behavior, DevDNA fuses both paradigms:
+DevDNA constructs a **digital twin** of any Python codebase from deterministic static analysis, and uses AI only where it adds value. Unlike naive AI wrappers that hallucinate call graphs, or purely static tools that cannot reason about semantic runtime behavior, DevDNA combines both:
 
 * **The Symbolic Engine (AST MultiDiGraph):** Mathematically maps dependencies, call sites, and exception handlers directly from syntax trees with zero hallucinations.
-* **The Neural Engine (Google Gemma 4):** Visually ingests architecture diagrams for drift detection, synthesizes arbitrary failure scenarios from natural language, and reconciles empirical test results. The cascading risk score itself is a deterministic heuristic computed from the dependency graph — no AI model is used for this score, and it is not a failure probability.
+* **The AI Engine (Gemma 4, served through the Google Gemini API):** Visually ingests architecture diagrams for drift detection, synthesizes arbitrary failure scenarios from natural language, and reconciles empirical test results. The cascading risk score itself is a deterministic heuristic computed from the dependency graph — no AI model is used for this score, and it is not a failure probability.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                        DevDNA Neuro-Symbolic Digital Twin                              │
+│                        DevDNA Digital Twin: Deterministic + AI Assist                        │
 ├───────────────────────────────┬────────────────────────────────────────────────────────┤
 │   SYMBOLIC GRAPH CO-PROCESSOR │ Deterministic AST Parser • Call Sites • NetworkX DAG  │
 ├───────────────────────────────┼────────────────────────────────────────────────────────┤
@@ -95,7 +95,7 @@ DevDNA constructs a **Neuro-Symbolic Digital Twin** of any Python codebase. Unli
 2. **Gemma 4 Dynamic Chaos Scenario Synthesizer:**
    * Allows developers to express arbitrary failure modes in natural language (e.g., *"Redis connection drop & cache eviction storm"* or *"JWT token expiration cascade"*).
    * Gemma 4 inspects the AST code, identifies target components and exception hierarchies, and generates runtime fault specifications.
-3. **Neuro-Symbolic Blast Radius Engine:**
+3. **Blast Radius Engine (deterministic, AI-explained):**
    * Combines dual reverse graph reachability bounds with a deterministic heuristic risk score (0-100; heuristic score, not a failure probability — no AI model is used for this score), with Gemma 4 contributing semantic failure mechanisms and unverified route coverage gap analysis.
    * Differentiates **Definite** paths from **Possible** (conditionally handled) paths.
 4. **Empirical What-If Lab (Controlled Fault Injection):**
@@ -144,7 +144,7 @@ flowchart LR
     subgraph Backend["FastAPI Backend"]
         Ingest[ZIP & Local Path Ingestion]
         AST[Python AST Analyzer]
-        Engine[Neuro-Symbolic Engine]
+        Engine[Deterministic Impact Engine]
         Runner[What-If Experiment Runner]
         Gemma[Gemma 4 Service: Text + Vision]
         Store[(SQLite Analysis Store)]
@@ -169,7 +169,7 @@ flowchart LR
 
 | Layer | Technologies | Responsibilities |
 | :--- | :--- | :--- |
-| **Cognitive AI Core** | Google Gemma 4 26B (`gemma-4-26b-a4b-it`), Google Gen AI SDK | Multimodal visual architecture audits, dynamic chaos scenario synthesis, neuro-symbolic risk evaluation |
+| **Cognitive AI Core** | Google Gemma 4 26B (`gemma-4-26b-a4b-it`), Google Gen AI SDK | Multimodal visual architecture audits, dynamic chaos scenario synthesis, calibrated risk evaluation |
 | **Backend API** | Python 3.11+, FastAPI, Uvicorn, Pydantic v2, SQLAlchemy, SQLite | High-performance async REST service, analysis persistence, schema validation |
 | **Static Analysis** | Python native `ast`, NetworkX | AST visitor traversal, call-site resolution, directed dependency multi-graph |
 | **Testing & Faults** | `pytest`, custom `devdna_faults` plugin, JUnit XML parser | Baseline vs. faulted test execution, socket/db/env/dynamic fault interception |
@@ -193,7 +193,7 @@ Then open **http://localhost:8080** and load the bundled demo project. This star
 ### Prerequisites
 * **Python:** 3.11 or later
 * **Node.js:** 18 or later (npm 9+)
-* **Google Gemini API Key:** Required for Gemma 4 multimodal visual audits, dynamic scenario generation, and neuro-symbolic simulation. (An offline graceful fallback is included for local graph browsing).
+* **Google Gemini API Key:** Required for Gemma 4 multimodal visual audits, dynamic scenario generation, and calibrated risk notes. (An offline graceful fallback is included for local graph browsing).
 
 ### 1. Backend Setup
 ```bash

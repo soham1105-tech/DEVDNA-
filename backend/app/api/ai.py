@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.ai.evidence import Package, architecture_package, chat_package, discrepancy_package, experiment_package, prediction_package
@@ -14,6 +15,7 @@ from app.ai.gemma import AIError, gemma
 from app.api.deps import get_project, require_run
 from app.db import get_db
 from app.models import AIInteraction, Experiment, Prediction, Project
+from app.config import settings
 from app.schemas import AIRequest, ChatIn, DynamicScenarioIn
 from app.services.analysis import load_graph
 from app.services.serialize import experiment_out, iso, prediction_out
@@ -69,6 +71,35 @@ PROMPTS = {
 }
 
 
+def _gemma_budget_check(db: Session, project: Project) -> None:
+    """Per-project Gemma budget over a rolling 30-day window.
+
+    Fails closed: the call is only allowed when the budget query succeeds and
+    the count is under the configured budget. Rejected with 429 and a clear
+    error, never silently bypassed.
+    """
+    window_start = datetime.now(timezone.utc) - timedelta(days=30)
+    try:
+        used = db.scalar(
+            select(func.count()).select_from(AIInteraction)
+            .where(AIInteraction.project_id == project.id,
+                   AIInteraction.created_at >= window_start)
+        )
+    except Exception as exc:  # fail closed: cannot verify the budget -> no call
+        raise HTTPException(503, detail={
+            "code": "budget_check_failed",
+            "message": "Could not verify the Gemma budget for this project; the request was blocked. "
+                       "Check the backend logs.",
+        }) from exc
+    if used >= settings.gemma_monthly_budget:
+        raise HTTPException(429, detail={
+            "code": "gemma_budget_exceeded",
+            "message": f"Gemma budget exceeded for this project: {used} requests in the last 30 days "
+                       f"(limit {settings.gemma_monthly_budget}). Raise DEVDNA_GEMMA_MONTHLY_BUDGET or wait "
+                       "for the window to roll over.",
+        })
+
+
 def _ai(db: Session, project: Project, kind: str, subject_id: str | None, prompt: str, pkg: Package, body: AIRequest) -> dict:
     evidence = pkg.to_dict()
     if body.preview:
@@ -79,6 +110,7 @@ def _ai(db: Session, project: Project, kind: str, subject_id: str | None, prompt
     if not gemma.configured:
         raise HTTPException(503, detail={"code": "not_configured",
                                          "message": "AI is not configured. Add GEMINI_API_KEY to backend/.env and restart the backend."})
+    _gemma_budget_check(db, project)
     full_prompt = f"{PROMPTS[kind]}\n\n{prompt}\n\nEVIDENCE:\n{pkg.render()}"
     record = AIInteraction(project_id=project.id, kind=kind, subject_id=subject_id, model=gemma.model, status="error",
                            evidence_refs=[i["ref"] + ": " + i["title"] for i in pkg.items])
@@ -201,6 +233,7 @@ async def multimodal_audit(
 
     if not gemma.configured:
         raise HTTPException(503, detail={"code": "not_configured", "message": "Gemma is not configured. Add GEMINI_API_KEY to backend/.env and restart."})
+    _gemma_budget_check(db, p)
 
     comps, edges, _ = load_graph(db, run.id)
     pkg = architecture_package({"name": p.name}, comps, edges, Path(p.source_path))
@@ -284,6 +317,7 @@ def synthesize_dynamic_scenario(project_id: str, body: DynamicScenarioIn, db: Se
         status="error",
         evidence_refs=[i["ref"] + ": " + i["title"] for i in pkg.items],
     )
+    _gemma_budget_check(db, p)
     try:
         parsed, meta = gemma.generate("dynamic_scenario", prompt, pkg.refs)
     except AIError as exc:

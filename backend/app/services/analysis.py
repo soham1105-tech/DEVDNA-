@@ -20,6 +20,9 @@ from app.services.ownership import assign_finding_owners
 log = logging.getLogger("devdna.analysis")
 _graph_cache: dict[str, tuple] = {}
 _cache_lock = threading.Lock()
+# Analyses are per-run and immutable; keep the most recent ones bounded so a
+# long-lived server does not hold every run's graph in memory.
+GRAPH_CACHE_MAX_ENTRIES = 16
 
 
 def run_analysis(run_id: str) -> None:
@@ -111,5 +114,9 @@ def load_graph(db: Session, run_id: str):
     edges = edge_dicts(db, run_id)
     g = build_graph(comps, edges)
     with _cache_lock:
+        # evict the oldest cached graphs when over the bound (FIFO; entries
+        # are immutable and cheap to rebuild from the DB)
+        while len(_graph_cache) >= GRAPH_CACHE_MAX_ENTRIES:
+            _graph_cache.pop(next(iter(_graph_cache)))
         _graph_cache[run_id] = (comps, edges, g)
     return comps, edges, g

@@ -56,7 +56,7 @@ export default function MultimodalAuditModal({ open, onClose, projectId }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await api.multimodalAudit(projectId, file, diagramType, notes)
+      const res = await api.multimodalAudit(projectId, file, diagramType, notes, consent)
       setResult(res.result)
     } catch (err) {
       setError(err?.message || 'Multimodal visual audit failed. Ensure Gemma API key is configured.')

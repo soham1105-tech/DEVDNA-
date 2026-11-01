@@ -7,11 +7,16 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import select
+import logging
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.analyzer.ingest import ZipSecurityError, safe_extract_zip, scan_tree
+from app import db as dbmod
 from app.api.deps import get_project, pagination_params
 from app.config import settings
 from app.db import get_db
@@ -24,6 +29,33 @@ from app.services.analysis import run_analysis
 from app.services.serialize import project_out, run_out
 
 router = APIRouter(prefix="/api", tags=["projects"])
+log = logging.getLogger("devdna.projects")
+RESTARTED_RUN_MESSAGE = "Server restarted before this analysis finished — please re-run it."
+
+
+def recover_stale_analysis_runs() -> int:
+    """Mark analysis runs left queued/running by a previous process as failed.
+
+    Mirrors recover_stale_experiments(): the background task that would have
+    finished them died with the old process. Runs are kept and marked failed,
+    never silently re-run or deleted.
+    """
+    db = dbmod.SessionLocal()
+    try:
+        rows = db.scalars(select(AnalysisRun).where(AnalysisRun.status.in_(["queued", "running"]))).all()
+        for run in rows:
+            run.status, run.stage = "failed", "Failed"
+            run.error = RESTARTED_RUN_MESSAGE
+            run.finished_at = datetime.now(timezone.utc)
+        if rows:
+            db.commit()
+            log.warning("Marked %d stale queued/running analysis run(s) as failed after restart.", len(rows))
+        return len(rows)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def _start_run(db: Session, project: Project, background: BackgroundTasks) -> AnalysisRun:
@@ -143,8 +175,10 @@ def _create_zip_project(
 @router.get("/projects")
 def list_projects(db: Session = Depends(get_db), params: tuple[int, int] = Depends(pagination_params)):
     limit, offset = params
+    total = db.scalar(select(func.count()).select_from(Project))
     projects = db.scalars(select(Project).order_by(Project.created_at.desc(), Project.id.desc()).offset(offset).limit(limit)).all()
-    return [project_out(p, db.get(AnalysisRun, p.latest_run_id) if p.latest_run_id else None) for p in projects]
+    items = [project_out(p, db.get(AnalysisRun, p.latest_run_id) if p.latest_run_id else None) for p in projects]
+    return JSONResponse(content=items, headers={"X-Total-Count": str(total)})
 
 
 @router.post("/projects/sample", status_code=201)
@@ -235,12 +269,20 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/projects/{project_id}/analyze", status_code=202)
-def analyze(project_id: str, background: BackgroundTasks, db: Session = Depends(get_db)):
+def analyze(project_id: str, background: BackgroundTasks, db: Session = Depends(get_db),
+            force: bool = Query(False)):
     p = get_project(db, project_id)
     running = db.scalars(select(AnalysisRun).where(AnalysisRun.project_id == p.id,
                                                    AnalysisRun.status.in_(["queued", "running"]))).first()
-    if running:
+    if running and not force:
         return run_out(running)
+    if running and force:
+        # the operator explicitly asked for a fresh run: the stale run cannot
+        # be finished by anyone, so fail it with a clear reason
+        running.status, running.stage = "failed", "Failed"
+        running.error = "Superseded by a forced re-analysis."
+        running.finished_at = datetime.now(timezone.utc)
+        db.commit()
     return run_out(_start_run(db, p, background))
 
 

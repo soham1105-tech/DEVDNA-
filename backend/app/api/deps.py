@@ -14,7 +14,13 @@ def get_project(db: Session, project_id: str) -> Project:
 def require_run(db: Session, project: Project) -> AnalysisRun:
     if not project.latest_run_id:
         raise HTTPException(409, detail={"code": "not_analysed", "message": "This project has not been analysed yet."})
-    return db.get(AnalysisRun, project.latest_run_id)
+    run = db.get(AnalysisRun, project.latest_run_id)
+    if run and run.status != "completed":
+        # distinct from not_analysed: a run exists but its results are not usable
+        raise HTTPException(409, detail={"code": "analysis_incomplete",
+                                         "message": f"This project's latest analysis is '{run.status}', not completed. "
+                                                    "Re-run the analysis or wait for it to finish."})
+    return run
 
 
 MAX_PAGE = 200

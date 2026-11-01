@@ -55,6 +55,11 @@ class Settings:
     api_token: str = field(default_factory=lambda: os.environ.get("DEVDNA_API_TOKEN", "").strip())
     # Simple per-IP request budget applied to /api routes.
     rate_limit_per_minute: int = field(default_factory=lambda: _int("DEVDNA_RATE_LIMIT_PER_MINUTE", 120))
+    # Experiment queue cap across the whole server (queued + running).
+    max_queued_experiments: int = field(default_factory=lambda: _int("DEVDNA_MAX_QUEUED_EXPERIMENTS", 10))
+    # Per-project Gemma request budget over a rolling 30-day window; the guard
+    # fails closed (a budget-check error blocks the call, never bypasses it).
+    gemma_monthly_budget: int = field(default_factory=lambda: _int("DEVDNA_GEMMA_MONTHLY_BUDGET", 200))
     # AI
     gemma_model: str = field(default_factory=lambda: os.environ.get("GEMMA_MODEL", "gemma-4-26b-a4b-it"))
     ai_timeout_s: int = field(default_factory=lambda: _int("DEVDNA_AI_TIMEOUT", 180))

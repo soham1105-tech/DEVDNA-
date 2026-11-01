@@ -572,3 +572,109 @@ def test_unauthorized_and_rate_limited_attempts_are_logged(client, monkeypatch, 
     warnings = [r.getMessage() for r in caplog.records if r.name == "devdna.guard"]
     assert any("401 unauthorized" in m and "/api/projects" in m for m in warnings)
     assert any("429 rate_limited" in m and "/api/health" in m for m in warnings)
+
+
+def test_findings_pagination_orders_by_severity_across_pages(client, sample_project):
+    """Findings are ordered by severity in SQL, so page slices are
+    deterministic: page 1 is all high-severity before page 2 starts on lower
+    severities, regardless of insertion order."""
+
+    from app import db as dbmod
+    from app.models import Finding, Project
+
+    db = dbmod.SessionLocal()
+    try:
+        project = db.get(Project, sample_project)
+        run_id = project.latest_run_id
+        # insert findings with interleaved severities and reversed titles
+        severities = ["low", "high", "info", "high", "medium", "high"]
+        for i, sev in enumerate(severities):
+            db.add(Finding(project_id=sample_project, run_id=run_id, rule=f"r{i}",
+                           title=f"z-finding-{i}", severity=sev, description="d",
+                           evidence=[], confidence="high", assumptions=[]))
+        db.commit()
+    finally:
+        db.close()
+
+    page1 = client.get(f"/api/projects/{sample_project}/findings?limit=3&offset=0").json()
+    page2 = client.get(f"/api/projects/{sample_project}/findings?limit=3&offset=3").json()
+    order = {"high": 0, "medium": 1, "low": 2, "info": 3}
+    seen = [(f["severity"], f["title"]) for f in page1 + page2 if f["title"].startswith("z-finding")]
+    ranks = [order[sev] for sev, _ in seen]
+    assert ranks == sorted(ranks), seen  # severity order holds across pages
+    # within the same severity, titles break ties deterministically
+    highs = [t for sev, t in seen if sev == "high"]
+    assert highs == sorted(highs)
+    assert client.get(f"/api/projects/{sample_project}/findings",
+                      headers={"X-Total-Count-Check": "1"}).headers.get("x-total-count") is not None
+
+
+def test_stale_analysis_run_recovered_on_startup(client, sample_project):
+    """A queued/running analysis run left by a previous process becomes failed
+    with the restart message; it is kept, not deleted."""
+    from app.api.projects import recover_stale_analysis_runs
+
+    db = dbmod.SessionLocal()
+    try:
+        stale = AnalysisRun(project_id=sample_project, status="running", stage="Indexing")
+        db.add(stale)
+        db.commit()
+        run_id = stale.id
+    finally:
+        db.close()
+
+    assert recover_stale_analysis_runs() == 1
+    db = dbmod.SessionLocal()
+    try:
+        run = db.get(AnalysisRun, run_id)
+        assert run.status == "failed"
+        assert run.error == "Server restarted before this analysis finished — please re-run it."
+        assert run.finished_at is not None
+    finally:
+        db.close()
+
+
+def test_force_reanalysis_fails_a_stale_run(client, sample_project):
+    """force=true fails the stuck run and starts a fresh one instead of
+    returning the stuck run forever."""
+
+    db = dbmod.SessionLocal()
+    try:
+        stale = AnalysisRun(project_id=sample_project, status="running", stage="Indexing")
+        db.add(stale)
+        db.commit()
+        stale_id = stale.id
+    finally:
+        db.close()
+
+    r = client.post(f"/api/projects/{sample_project}/analyze?force=true")
+    assert r.status_code == 202
+    db = dbmod.SessionLocal()
+    try:
+        stale_run = db.get(AnalysisRun, stale_id)
+        assert stale_run.status == "failed"
+        assert "Superseded" in stale_run.error
+        assert stale_run.id != r.json()["id"]  # a new run started
+    finally:
+        db.close()
+
+
+def test_large_trace_comparison_output_is_capped(client, sample_project, tmp_path):
+    """A trace with thousands of unmapped edges produces a bounded response:
+    exact counts up top, detail lists truncated."""
+
+    from app.services.traces import compare_traces, parse_trace_bytes
+
+    rows = ",".join(
+        f'{{"caller":"ghost_{i}","callee":"ghost_target_{i}","count":1}}' for i in range(3000)
+    )
+    trace_bytes = f'{{"format":"spans","spans":3000,"edges":[{rows}]}}'.encode()
+    trace = parse_trace_bytes(trace_bytes)
+    components = [{"id": "func:m.f", "type": "function", "name": "f", "file": "m.py", "data": {"module": "m"}}]
+    comparison = compare_traces(components, [], trace)
+
+    assert comparison["unmapped_count"] == 3000          # exact count preserved
+    assert len(comparison["unmapped_trace_edges"]) <= 200  # detail list capped
+    assert len(comparison["observed"]) <= 500
+    assert len(comparison["unobserved"]) <= 500
+    assert len(comparison["runtime_only_edges"]) <= 500

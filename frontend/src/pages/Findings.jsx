@@ -22,7 +22,14 @@ export default function Findings() {
 
 function FindingsPage({ project }) {
   const [params] = useSearchParams()
-  const { data, error, loading, reload, setData } = useAsync(() => api.findings(project.id), [project.id, project.latest_run_id])
+  const [limit, setLimit] = useState(50)
+  const { data, error, loading, reload, setData } = useAsync(
+    () => api.findings(project.id, { limit }),
+    [project.id, project.latest_run_id, limit],
+  )
+  const total = data?.__total__ ?? null
+  const visible = data ?? []
+  const allLoaded = total !== null && visible.length >= total
   const [severity, setSeverity] = useState('all')
   const [status, setStatus] = useState('all')
   const [owner, setOwner] = useState('all')
@@ -31,10 +38,10 @@ function FindingsPage({ project }) {
   const [saving, setSaving] = useState(null)
   const [actionError, setActionError] = useState('')
 
-  const owners = useMemo(() => [...new Set((data || []).map((f) => f.owner || 'Unassigned'))].sort(), [data])
+  const owners = useMemo(() => [...new Set((visible || []).map((f) => f.owner || 'Unassigned'))].sort(), [data])
   const list = useMemo(
     () =>
-      (data || []).filter(
+      (visible || []).filter(
         (f) =>
           (severity === 'all' || f.severity === severity) &&
           (status === 'all' || (status === 'suppressed' ? f.is_suppressed : status === 'active' ? !f.is_suppressed : f.review_status === status)) &&
@@ -45,7 +52,7 @@ function FindingsPage({ project }) {
   )
   const counts = useMemo(() => {
     const c = { all: data?.length || 0 }
-    ;(data || []).forEach((f) => (c[f.severity] = (c[f.severity] || 0) + 1))
+    ;(visible || []).forEach((f) => (c[f.severity] = (c[f.severity] || 0) + 1))
     return c
   }, [data])
 
@@ -201,6 +208,12 @@ function FindingsPage({ project }) {
       {error && <ErrorState error={error} onRetry={reload} />}
       {actionError && <p role="alert" className="mb-3 text-sm text-negative">{actionError}</p>}
       {data && list.length === 0 && <EmptyState icon={ShieldAlert} title="No findings match" description="Try a different filter." />}
+      {total !== null && total > limit && !allLoaded && (
+        <div className="flex items-center justify-between rounded-card border border-edge bg-surface px-4 py-3 text-sm text-muted">
+          <span>Showing {visible.length} of {total} findings</span>
+          <Button size="sm" onClick={() => setLimit((l) => l + 50)}>Load more</Button>
+        </div>
+      )}
       {activeFindings.length > 0 && <section className="space-y-2"><h2 className="text-xs font-medium text-ink">Active findings</h2><motion.ul layout className="space-y-2"><AnimatePresence initial={false}>{activeFindings.map(renderFinding)}</AnimatePresence></motion.ul></section>}
       {suppressedFindings.length > 0 && <section className="mt-6 space-y-2"><h2 className="text-xs font-medium text-warning">Suppressed findings</h2><motion.ul layout className="space-y-2"><AnimatePresence initial={false}>{suppressedFindings.map(renderFinding)}</AnimatePresence></motion.ul></section>}
     </>

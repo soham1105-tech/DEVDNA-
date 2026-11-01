@@ -23,6 +23,10 @@ async def lifespan(app: FastAPI):
         dbmod.init_engine()
     settings.projects_dir.mkdir(parents=True, exist_ok=True)
     recover_stale_experiments()
+    from app.api.projects import recover_stale_analysis_runs
+    recover_stale_analysis_runs()
+    from app.api.projects import recover_stale_analysis_runs
+    recover_stale_analysis_runs()
     if not settings.api_token and not settings.local_only:
         raise RuntimeError(
             "DEVDNA_API_TOKEN is not set. Set a token to protect the API, or set "

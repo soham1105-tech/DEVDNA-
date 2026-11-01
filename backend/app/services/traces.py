@@ -224,6 +224,9 @@ def compare_traces(components: list[dict], edges: list[dict], trace: dict) -> di
          "source_name": index.by_id[s]["name"], "target_name": index.by_id[t]["name"]}
         for s, t in unobserved]
 
+    # caps keep a huge trace from producing a multi-megabyte response; the
+    # counts above stay exact, only the detail lists are truncated
+    MAX_DETAIL = 500
     return {
         "trace_format": trace["format"],
         "trace_edges": len(trace["edges"]),
@@ -232,9 +235,12 @@ def compare_traces(components: list[dict], edges: list[dict], trace: dict) -> di
         "observed_static_edges": len(observed),
         "unobserved_static_edges": len(unobserved),
         "coverage": round(len(observed) / len(comparable), 3) if comparable else None,
-        "observed": observed_edges,
-        "unobserved": unobserved_edges,
-        "runtime_only_edges": runtime_edges,
+        "observed": observed_edges[:MAX_DETAIL],
+        "observed_truncated": len(observed_edges) > MAX_DETAIL,
+        "unobserved": unobserved_edges[:MAX_DETAIL],
+        "unobserved_truncated": len(unobserved_edges) > MAX_DETAIL,
+        "runtime_only_edges": runtime_edges[:MAX_DETAIL],
+        "runtime_only_truncated": len(runtime_edges) > MAX_DETAIL,
         "unmapped_trace_edges": unmapped[:200],
         "unmapped_count": len(unmapped),
     }

@@ -14,6 +14,12 @@ from app.services.analysis import component_dicts
 from app.services.finding_workflow import finding_fingerprint, suppression_map
 from app.services.serialize import STATUS_LABELS, experiment_out, finding_out
 
+# Report payload caps: a huge repository must not produce a multi-megabyte
+# report; counts stay exact, the detail lists are truncated with a marker.
+MAX_REPORT_COMPONENTS = 200
+MAX_REPORT_FINDINGS = 500
+MAX_REPORT_MARKDOWN_CHARS = 1_000_000
+
 LIMITATIONS = [
     "Architecture is discovered by static analysis of Python source; dynamic behaviour is not observed.",
     "Criticality scores are structural heuristics, not production failure probabilities.",
@@ -57,6 +63,14 @@ def project_report(db: Session, project: Project) -> dict:
     exps = db.scalars(select(Experiment).where(Experiment.project_id == project.id)).all()
     ai = db.scalars(select(AIInteraction).where(AIInteraction.project_id == project.id)).all()
     top = sorted([c for c in comps if c["type"] != "test"], key=lambda c: -c["metrics"].get("criticality", 0))[:10]
+    report_components = comps[:MAX_REPORT_COMPONENTS]
+    report_findings = findings[:MAX_REPORT_FINDINGS]
+    report_note = {
+        "components_truncated": len(comps) > len(report_components),
+        "findings_truncated": len(findings) > len(report_findings),
+        "components_total": len(comps),
+        "findings_total": len(findings),
+    } if (len(comps) > len(report_components) or len(findings) > len(report_findings)) else None
     report = {
         "report_type": "devdna_project_report",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -65,7 +79,7 @@ def project_report(db: Session, project: Project) -> dict:
         "top_critical_components": [{"id": c["id"], "type": c["type"], **{k: c["metrics"].get(k) for k in
                                      ("criticality", "dependents", "betweenness", "routes_depending")}} for c in top],
         "criticality_formula": SCORE_DOC.strip(),
-        "findings": [finding_out(f, suppressions.get(finding_fingerprint(f))) for f in findings],
+        "findings": [finding_out(f, suppressions.get(finding_fingerprint(f))) for f in report_findings],
         "predictions": [{"id": p.id, "scenario": p.scenario, "target": p.target_id, "summary": p.impact.get("summary"),
                          "ai_explained": bool(p.ai_explanation)} for p in preds],
         "experiments": [{"id": e.id, "status": e.status, "status_label": STATUS_LABELS.get(e.status, e.status),
@@ -73,6 +87,7 @@ def project_report(db: Session, project: Project) -> dict:
                          "metrics": (e.comparison or {}).get("metrics")} for e in exps],
         "ai_usage": {"requests": len(ai), "ok": sum(1 for a in ai if a.status == "ok"),
                      "models": sorted({a.model for a in ai})},
+        "payload_caps": report_note,
         "limitations": LIMITATIONS,
     }
     return _scrub(report)

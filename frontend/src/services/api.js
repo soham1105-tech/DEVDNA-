@@ -41,6 +41,12 @@ export function toApiError(err) {
 async function call(method, url, data, config) {
   try {
     const res = await http.request({ method, url, data, ...config })
+    // paginated endpoints ship their total in X-Total-Count; attach it
+    // non-enumerably so consumers can render "load more" without a new shape
+    const total = res.headers?.['x-total-count']
+    if (total !== undefined && res.data && typeof res.data === 'object') {
+      Object.defineProperty(res.data, '__total__', { value: Number(total), enumerable: false })
+    }
     return res.data
   } catch (err) {
     throw toApiError(err)
@@ -55,7 +61,7 @@ export const api = {
   health: () => call('get', '/api/health'),
   aiStatus: (check = false) => call('get', `/api/ai/status${check ? '?check=true' : ''}`),
 
-  listProjects: () => call('get', '/api/projects'),
+  listProjects: (params) => call('get', '/api/projects', null, { params }),
   getProject: (id) => call('get', `/api/projects/${id}`),
   loadSample: () => call('post', '/api/projects/sample'),
   loadGithub: (payload) => call('post', '/api/projects/github', payload),
@@ -77,7 +83,7 @@ export const api = {
 
   architecture: (id) => call('get', `/api/projects/${id}/architecture`),
   component: (id, componentId) => call('get', `/api/projects/${id}/components/${componentId.split('/').map(enc).join('/')}`),
-  findings: (id) => call('get', `/api/projects/${id}/findings`),
+  findings: (id, params) => call('get', `/api/projects/${id}/findings`, null, { params }),
   updateFinding: (findingId, review_status) => call('patch', `/api/findings/${findingId}`, { review_status }),
   suppressFinding: (findingId, payload) => call('post', `/api/findings/${findingId}/suppress`, payload),
   unsuppressFinding: (findingId) => call('post', `/api/findings/${findingId}/unsuppress`),
@@ -88,10 +94,10 @@ export const api = {
 
   createPrediction: (id, scenario, target_id, custom_spec = null) =>
     call('post', `/api/projects/${id}/predictions`, { scenario, target_id, custom_spec }),
-  predictions: (id) => call('get', `/api/projects/${id}/predictions`),
+  predictions: (id, params) => call('get', `/api/projects/${id}/predictions`, null, { params }),
   prediction: (predictionId) => call('get', `/api/predictions/${predictionId}`),
   startExperiment: (predictionId) => call('post', `/api/predictions/${predictionId}/experiments`, { approved: true }),
-  experiments: (id) => call('get', `/api/projects/${id}/experiments`),
+  experiments: (id, params) => call('get', `/api/projects/${id}/experiments`, null, { params }),
   experiment: (experimentId) => call('get', `/api/experiments/${experimentId}`),
 
   // AI: every endpoint accepts { preview } (returns the evidence package) or { consent: true } (calls Gemma)
@@ -103,12 +109,13 @@ export const api = {
   aiInteractions: (id) => call('get', `/api/projects/${id}/ai/interactions`),
 
   // Gemma 4 Multimodal & Dynamic Failure Synthesis
-  multimodalAudit: (id, file, diagram_type = 'architecture_diagram', notes = '') => {
+  // consent comes from the modal's explicit checkbox; it is never defaulted to true
+  multimodalAudit: (id, file, diagram_type = 'architecture_diagram', notes = '', consent = false) => {
     const form = new FormData()
     form.append('file', file)
     form.append('diagram_type', diagram_type)
     form.append('notes', notes)
-    form.append('consent', 'true')
+    form.append('consent', String(consent))
     return call('post', `/api/projects/${id}/ai/multimodal-audit`, form, AI)
   },
   latestMultimodalAudit: (id) => call('get', `/api/projects/${id}/ai/multimodal-audit/latest`),

@@ -7,11 +7,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from sqlalchemy import select
+from fastapi.responses import JSONResponse
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import db as dbmod
 from app.api.deps import get_project, pagination_params, require_run
+from app.config import settings
 from app.db import get_db
 from app.experiments.runner import choose_mode, compare, execute, fault_spec
 from app.graph.engine import compute_impact
@@ -127,9 +129,11 @@ def create_prediction(project_id: str, body: PredictionIn, db: Session = Depends
 def list_predictions(project_id: str, db: Session = Depends(get_db), params: tuple[int, int] = Depends(pagination_params)):
     limit, offset = params
     get_project(db, project_id)
+    total = db.scalar(select(func.count()).select_from(Prediction).where(Prediction.project_id == project_id))
     rows = db.scalars(select(Prediction).where(Prediction.project_id == project_id)
                       .order_by(Prediction.created_at.desc(), Prediction.id.desc()).offset(offset).limit(limit)).all()
-    return [prediction_out(x) for x in rows]
+    items = [prediction_out(x) for x in rows]
+    return JSONResponse(content=items, headers={"X-Total-Count": str(total)})
 
 
 @router.get("/predictions/{prediction_id}")
@@ -184,6 +188,14 @@ def start_experiment(prediction_id: str, body: ExperimentIn, background: Backgro
     if not body.approved:
         raise HTTPException(400, detail={"code": "approval_required",
                                          "message": "Experiments only run after explicit approval (approved: true)."})
+    queued = db.scalar(select(func.count()).select_from(Experiment)
+                       .where(Experiment.status.in_(["queued", "running"])))
+    if queued >= settings.max_queued_experiments:
+        raise HTTPException(429, detail={
+            "code": "experiment_queue_full",
+            "message": f"Experiment queue is full ({queued} queued/running, limit {settings.max_queued_experiments}). "
+                       "Wait for running experiments to finish.",
+        })
     exp = Experiment(project_id=pred.project_id, prediction_id=pred.id, status="queued",
                      approved_at=datetime.now(timezone.utc))
     db.add(exp)
@@ -196,6 +208,7 @@ def start_experiment(prediction_id: str, body: ExperimentIn, background: Backgro
 def list_experiments(project_id: str, db: Session = Depends(get_db), params: tuple[int, int] = Depends(pagination_params)):
     limit, offset = params
     get_project(db, project_id)
+    total = db.scalar(select(func.count()).select_from(Experiment).where(Experiment.project_id == project_id))
     rows = db.scalars(select(Experiment).where(Experiment.project_id == project_id)
                       .order_by(Experiment.created_at.desc(), Experiment.id.desc()).offset(offset).limit(limit)).all()
     out = []
@@ -206,7 +219,7 @@ def list_experiments(project_id: str, db: Session = Depends(get_db), params: tup
         item["observation"] = {k: {kk: v.get(kk) for kk in ("counts", "duration_s", "timed_out")} for k, v in obs.items()
                                if k in ("baseline", "faulted")}
         out.append(item)
-    return out
+    return JSONResponse(content=out, headers={"X-Total-Count": str(total)})
 
 
 @router.get("/experiments/{experiment_id}")

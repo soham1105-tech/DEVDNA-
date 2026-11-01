@@ -38,8 +38,7 @@ export default function ConsentModal({ open, preview, purpose, sessionOption, on
       }
     >
       <p className="text-sm text-muted">
-        DevDNA will send the {items.length} evidence items below ({preview?.evidence?.total_chars?.toLocaleString()} characters) to the Google
-        Gemini API to run <span className="num text-ink">{preview?.model}</span>. Secrets are redacted and nothing else from your repository is sent.
+        DevDNA will send the {items.length} evidence items below ({preview?.evidence?.total_chars?.toLocaleString()} characters) to the Gemma API (Google Gemini API) to run <span className="num text-ink">{preview?.model}</span>. Secrets are redacted and nothing else from your repository is sent.
       </p>
       <ul className="mt-4 space-y-1.5">
         {items.map((it) => (
@@ -68,7 +67,7 @@ export default function ConsentModal({ open, preview, purpose, sessionOption, on
       </ul>
       <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-sm text-muted">
         <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-        I agree to send this evidence to the Gemini API.
+        I agree to send this evidence to the Gemma API (Google Gemini API).
       </label>
       {sessionOption && (
         <label className="mt-2 flex cursor-pointer items-start gap-2.5 text-sm text-muted">

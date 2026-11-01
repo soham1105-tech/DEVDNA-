@@ -6,11 +6,11 @@ This page describes the implemented and locally verified scope of the repository
 
 - The backend parses Python source with the Python AST and builds a dependency graph with NetworkX.
 - The bundled ShopLite sample supports the pytest fault-injection workflow.
-- The latest local test runs completed successfully: 139 backend tests (1 skipped: the Docker sandbox test, skipped when Docker is unavailable) and 22 frontend tests.
+- The latest local test runs completed successfully: 201 backend tests (1 skipped: the Docker sandbox test, skipped when Docker is unavailable) and 24 frontend tests (including the ast-engine suite counted separately in CI).
 
 ## What does not (or is not verified)
 
-- The application has no authentication.
+- The API has opt-in token auth (DEVDNA_API_TOKEN, enforced on every /api route except /api/health and on the schema endpoints) but no user accounts, roles, or multi-tenancy; without a token it runs only in an explicitly acknowledged localhost-only mode (DEVDNA_LOCAL_ONLY=true).
 - There is no customer traction, customer validation, or pricing evidence.
 - Code analysis is Python + JS/TS.
 - The Docker sandbox is tested in CI, skipped when unavailable.
@@ -18,4 +18,4 @@ This page describes the implemented and locally verified scope of the repository
 
 ## Test verification
 
-Verified locally with `python -m pytest -q` from `backend/` and `npm test -- --reporter=dot` from `frontend/`. Results: 139 backend tests passed (1 skipped) and 22 frontend tests passed.
+Verified locally with `python -m pytest -q` from `backend/` and `npm test -- --reporter=dot` from `frontend/`. Results: 201 backend tests passed (1 skipped) and 24 frontend tests passed; the ast-engine suite (7 tests) runs as its own CI job.
