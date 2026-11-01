@@ -39,6 +39,12 @@ class RemediationIn(BaseModel):
                                    description="Findings to check; empty means all findings of the latest run.")
 
 
+class PrReviewIn(BaseModel):
+    files: list[str] = Field(min_length=1, max_length=200,
+                             description="Changed file paths (repo-relative, or git diff a/ b/ form).")
+    title: str | None = Field(default=None, max_length=200, description="Optional PR title for the report.")
+
+
 class AIRequest(BaseModel):
     consent: bool = Field(default=False, description="Must be true to send the evidence package to Gemma.")
     preview: bool = Field(default=False, description="Return the exact evidence package without calling the model.")

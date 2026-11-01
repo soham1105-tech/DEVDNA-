@@ -60,7 +60,7 @@ def changed_files_impact(g, files: list[str]) -> dict:
 
     affected = []
     for n, data in g.nodes(data=True):
-        if n in parent and n not in seeds:
+        if n in parent and n not in seeds and data["type"] != "test":
             path = _path(parent, n)
             affected.append({
                 "id": n, "type": data["type"], "name": data["name"],

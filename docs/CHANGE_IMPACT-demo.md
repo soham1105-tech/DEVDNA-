@@ -11,7 +11,7 @@ Request: `POST /api/projects/6d481a675e0a/impact/changed-files` with
 ## Summary
 
 - Files mapped to analysed components: **3** / 4
-- Affected components (all `possible`): **96**
+- Affected components (all `possible`): **33** (corrected from 96 after a fix that stopped test nodes being double-counted as affected components)
 - Tests predicted `may_break` (never `fail`): **63** of 246
 - Changed files without test coverage: **0**
 - Unmapped files (reported, not ignored): 1
