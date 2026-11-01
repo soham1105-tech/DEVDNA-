@@ -16,7 +16,7 @@ from app.api.deps import get_project, pagination_params
 from app.config import settings
 from app.db import get_db
 from app.models import (
-    AIInteraction, AnalysisRun, Experiment, FindingSuppression, FindingSuppressionAudit, Prediction, Project,
+    AIInteraction, AnalysisRun, Experiment, FindingSuppression, FindingSuppressionAudit, Prediction, PredictionOutcome, Project,
     ReportRecord, _id,
 )
 from app.schemas import GitHubProjectIn, LocalProjectIn
@@ -228,7 +228,7 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
     p = get_project(db, project_id)
     if p.source_type in ("sample", "upload", "github"):
         shutil.rmtree(settings.projects_dir / p.id, ignore_errors=True)
-    for model in (Experiment, Prediction, AIInteraction, ReportRecord, FindingSuppression, FindingSuppressionAudit):
+    for model in (Experiment, Prediction, AIInteraction, ReportRecord, FindingSuppression, FindingSuppressionAudit, PredictionOutcome):
         db.query(model).filter(model.project_id == p.id).delete()
     db.delete(p)
     db.commit()

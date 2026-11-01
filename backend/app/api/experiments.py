@@ -6,7 +6,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -71,7 +71,7 @@ def create_prediction(project_id: str, body: PredictionIn, db: Session = Depends
     tests_fail = impact["summary"]["tests_predicted_fail"]
 
     # Calibrate risk score using empirically observed break rates from real experiment outcomes
-    cal_res = calibrate_impact(db, impact, body.scenario)
+    cal_res = calibrate_impact(db, impact, body.scenario, project_id=p.id)
     active_risk = cal_res["score"]
     calibrated_risk = cal_res["calibrated_score"]
     heuristic_risk = cal_res["heuristic_score"]
@@ -82,12 +82,14 @@ def create_prediction(project_id: str, body: PredictionIn, db: Session = Depends
         "model": None,
         "ai_model_used": False,
         "method": (
-            f"Calibrated empirical score ({calibrated_risk}) learned from {cal_res['sample_count']} experiment outcomes; "
+            f"Calibrated empirical score ({calibrated_risk}) learned from {cal_res['sample_count']} experiment outcomes "
+            f"of this project (calibration level: {cal_res['level']}); "
             f"heuristic score ({heuristic_risk}) retained during transition period for auditability; "
             f"not an AI prediction and not a failure probability."
             if is_calibrated else
             f"Heuristic score from definite, possible, and affected-route counts; "
-            f"no outcome data for pattern yet (fallback to heuristic: {heuristic_risk}); "
+            f"no calibrated outcome data for pattern yet ({cal_res['level']}: {cal_res['sample_count']} outcome(s) recorded, "
+            f"20 needed; fallback to heuristic: {heuristic_risk}); "
             f"not an AI prediction and not a failure probability."
         ),
         "cascading_risk_score": active_risk,
@@ -216,12 +218,24 @@ def get_experiment(experiment_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/calibration/stats")
-def get_calibration_stats(db: Session = Depends(get_db)):
+def get_calibration_stats(project_id: str | None = Query(None), db: Session = Depends(get_db)):
+    """Recorded-outcome statistics.
+
+    Scoped to one project when `project_id` is given; WITHOUT it the statistics
+    pool every project's outcomes globally (deliberate and explicit: the
+    calibration pool is global by default so cold-start projects benefit from
+    earlier experiments, and this endpoint exposes that global pool).
+    """
     from app.models import PredictionOutcome
-    rows = db.scalars(select(PredictionOutcome)).all()
+
+    conditions = []
+    if project_id:
+        conditions.append(PredictionOutcome.project_id == project_id)
+    rows = db.scalars(select(PredictionOutcome).where(*conditions)).all()
     guarded = [r for r in rows if r.guard_present]
     unguarded = [r for r in rows if not r.guard_present]
     return {
+        "project_id": project_id,
         "total_recorded": len(rows),
         "guarded_count": len(guarded),
         "guarded_break_rate": round(sum(1 for r in guarded if r.broke) / len(guarded), 3) if guarded else None,

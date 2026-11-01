@@ -50,6 +50,11 @@ def record_experiment_outcomes(
     rows = comp.get("rows", [])
     records: list[PredictionOutcome] = []
 
+    # a re-recorded experiment replaces its earlier outcome rows, so re-runs
+    # cannot double-count in calibration
+    if experiment.id:
+        db.query(PredictionOutcome).filter(PredictionOutcome.experiment_id == experiment.id).delete()
+
     for r in rows:
         nodeid = r.get("nodeid") or r.get("test")
         verdict = r.get("verdict", "")
@@ -105,6 +110,19 @@ def _routes_filter(has_routes: bool):
     return PredictionOutcome.routes_affected == 0
 
 
+# A calibrated rate is only trusted from this many recorded outcomes; below it
+# the calibration reports "insufficient data" instead of a 0%/100% fluke.
+MIN_SAMPLE_FOR_CALIBRATION = 20
+
+
+def _certainty_filter(certainty: str):
+    """A 'mixed' impact prediction (both definite and possible affected nodes)
+    can draw evidence from recorded outcomes of either certainty."""
+    if certainty == "mixed":
+        return PredictionOutcome.certainty.in_(("definite", "possible", "mixed"))
+    return PredictionOutcome.certainty == certainty
+
+
 def get_pattern_break_rate(
     db: Session,
     guard_present: bool,
@@ -113,21 +131,30 @@ def get_pattern_break_rate(
     has_routes: bool = True,
     scenario: str | None = None,
     target_type: str | None = None,
+    project_id: str | None = None,
 ) -> tuple[float | None, int, str]:
     """Calculate the observed break rate for a given pattern.
-    
-    Uses hierarchical fallback if exact scenario/type match has insufficient data:
+
+    Uses hierarchical fallback if the exact scenario/type match has insufficient
+    data (fewer than MIN_SAMPLE_FOR_CALIBRATION outcomes):
     Level 1: Exact scenario + target_type + pattern features
     Level 2: Pattern features (guard_present + test_mocked + certainty + has_routes)
     Level 3: Guard present + has_routes
     Level 4: Guard present only
+
+    When project_id is given, every level is scoped to that project's recorded
+    outcomes. A level with fewer than MIN_SAMPLE_FOR_CALIBRATION outcomes is
+    skipped; if no level reaches the minimum, the rate is None and the level is
+    reported as "insufficient_data" (total = the largest pool found).
     """
     base_pattern = [
         PredictionOutcome.guard_present == guard_present,
         PredictionOutcome.test_mocked == test_mocked,
-        PredictionOutcome.certainty == certainty,
+        _certainty_filter(certainty),
         _routes_filter(has_routes),
     ]
+    if project_id:
+        base_pattern.append(PredictionOutcome.project_id == project_id)
 
     levels: list[tuple[str, list]] = [
         # Level 1: Full context (only if scenario and target_type provided)
@@ -146,12 +173,13 @@ def get_pattern_break_rate(
             [
                 PredictionOutcome.guard_present == guard_present,
                 _routes_filter(has_routes),
-            ],
+            ] + ([PredictionOutcome.project_id == project_id] if project_id else []),
         ),
         # Level 4: Guard only
         (
             "guard_only",
-            [PredictionOutcome.guard_present == guard_present],
+            [PredictionOutcome.guard_present == guard_present]
+            + ([PredictionOutcome.project_id == project_id] if project_id else []),
         ),
     ]
 
@@ -159,20 +187,32 @@ def get_pattern_break_rate(
     if scenario is None or target_type is None:
         levels = levels[1:]
 
+    best_total = 0
     for level_name, conditions in levels:
         query = select(PredictionOutcome).where(*conditions)
         outcomes = db.scalars(query).all()
-        if outcomes:
+        total = len(outcomes)
+        best_total = max(best_total, total)
+        if total >= MIN_SAMPLE_FOR_CALIBRATION:
             broke_count = sum(1 for o in outcomes if o.broke)
-            total = len(outcomes)
             rate = broke_count / total
             return rate, total, level_name
 
+    # no pool reached the minimum sample: refuse to calibrate on a fluke
+    if best_total:
+        return None, best_total, "insufficient_data"
     return None, 0, "no_data"
 
 
-def calibrate_impact(db: Session, impact: dict, scenario: str) -> dict[str, Any]:
-    """Compute the calibrated score and retain the heuristic score for auditing."""
+def calibrate_impact(db: Session, impact: dict, scenario: str, project_id: str | None = None) -> dict[str, Any]:
+    """Compute the calibrated score and retain the heuristic score for auditing.
+
+    Calibration is scoped to the project's own recorded outcomes; without a
+    project_id only the global pool (legacy/seeded data) is consulted."""
+    return _calibrate(db, impact, scenario, project_id)
+
+
+def _calibrate(db: Session, impact: dict, scenario: str, project_id: str | None) -> dict[str, Any]:
     summary = impact.get("summary", {})
     definite_count = summary.get("definite", 0)
     possible_count = summary.get("possible", 0)
@@ -203,6 +243,7 @@ def calibrate_impact(db: Session, impact: dict, scenario: str) -> dict[str, Any]
         has_routes=has_routes,
         scenario=scenario,
         target_type=target_type,
+        project_id=project_id,
     )
 
     if break_rate is not None:
@@ -212,6 +253,14 @@ def calibrate_impact(db: Session, impact: dict, scenario: str) -> dict[str, Any]
         note = (
             f"Calibrated empirical score ({calibrated_score}) based on {sample_count} observed experiment outcomes "
             f"(observed break rate: {round(break_rate * 100, 1)}%, level: {level})."
+        )
+    elif level == "insufficient_data":
+        calibrated_score = None
+        active_score = heuristic_score
+        source = "insufficient_data"
+        note = (
+            f"Insufficient data for calibration: {sample_count} outcome(s) recorded for this pattern, "
+            f"{MIN_SAMPLE_FOR_CALIBRATION} needed; falling back to heuristic formula."
         )
     else:
         calibrated_score = None
@@ -270,7 +319,7 @@ def seed_calibration_outcomes(
                 routes_affected=1,
                 predicted_outcome="may_fail",
                 observed_outcome="failed" if broke else "passed",
-                verdict="match" if broke else "match",
+                verdict="match" if broke else "mismatch",
                 broke=broke,
                 pattern_key=build_pattern_key(True, False, "possible", True),
                 created_at=datetime.now(timezone.utc),

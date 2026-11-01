@@ -46,6 +46,19 @@ def init_engine(url: str | None = None):
     project_columns = {column["name"] for column in inspect(engine).get_columns("projects")}
     finding_columns = {column["name"] for column in inspect(engine).get_columns("findings")}
     with engine.begin() as connection:
+        # re-runs of an experiment must not double-count in calibration: dedup
+        # legacy duplicate outcome rows, then enforce uniqueness at the schema
+        # level (SQLite treats NULLs as distinct, so seeded rows without an
+        # experiment_id are unaffected)
+        connection.execute(text(
+            "DELETE FROM prediction_outcomes WHERE id NOT IN "
+            "(SELECT MIN(id) FROM prediction_outcomes "
+            "GROUP BY experiment_id, test_nodeid)"
+        ))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_prediction_outcomes_experiment_nodeid "
+            "ON prediction_outcomes (experiment_id, test_nodeid)"
+        ))
         for column, sql_type in (
             ("ast_owner", "VARCHAR(39)"),
             ("ast_repo", "VARCHAR(100)"),
