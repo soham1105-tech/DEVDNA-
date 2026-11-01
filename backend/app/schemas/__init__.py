@@ -27,6 +27,11 @@ class PredictionIn(BaseModel):
     custom_spec: dict | None = Field(default=None, description="Optional custom dynamic failure scenario specification.")
 
 
+class ChangedFilesIn(BaseModel):
+    files: list[str] = Field(min_length=1, max_length=200,
+                             description="Changed file paths (repo-relative, or git diff a/ b/ form).")
+
+
 class AIRequest(BaseModel):
     consent: bool = Field(default=False, description="Must be true to send the evidence package to Gemma.")
     preview: bool = Field(default=False, description="Return the exact evidence package without calling the model.")

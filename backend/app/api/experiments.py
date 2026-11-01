@@ -18,8 +18,9 @@ from app.db import get_db
 from app.experiments.runner import choose_mode, compare, execute, fault_spec
 from app.graph.engine import compute_impact
 from app.models import Experiment, Prediction, Project
-from app.schemas import ExperimentIn, PredictionIn
+from app.schemas import ChangedFilesIn, ExperimentIn, PredictionIn
 from app.services.analysis import load_graph
+from app.services.change_impact import changed_files_impact
 from app.services.calibration import calibrate_impact, record_experiment_outcomes
 from app.services.serialize import experiment_out, prediction_out, python_present
 
@@ -123,6 +124,20 @@ def create_prediction(project_id: str, body: PredictionIn, db: Session = Depends
     db.add(pred)
     db.commit()
     return prediction_out(pred)
+
+
+@router.post("/projects/{project_id}/impact/changed-files")
+def changed_files_impact_ep(project_id: str, body: ChangedFilesIn, db: Session = Depends(get_db)):
+    """Predict the impact of a set of changed files (e.g. an open PR's diff)
+    against the latest completed analysis. Deterministic and read-only: no
+    prediction row is stored."""
+    p = get_project(db, project_id)
+    run = require_run(db, p)
+    _, _, g = load_graph(db, run.id)
+    result = changed_files_impact(g, body.files)
+    result["project"] = {"id": p.id, "name": p.name}
+    result["run_id"] = run.id
+    return result
 
 
 @router.get("/projects/{project_id}/predictions")
