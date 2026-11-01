@@ -32,6 +32,10 @@ from app.config import settings
 
 HARNESS_DIR = Path(__file__).resolve().parent / "harness"
 SANDBOX_IMAGE = "devdna-sandbox:latest"
+# A comparison verdict (confirmed/contradicted/partially_confirmed) is only
+# trusted from this many definite predictions; below it the run is
+# inconclusive — a 1-test confirmation is a fluke, not evidence.
+MIN_DEFINITE_TO_GRADE = 5
 MAX_OUTPUT_CHARS = 20000
 COPY_IGNORE = shutil.ignore_patterns(".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", "*.db",
                                      "*.sqlite", "*.sqlite3", ".env", ".env.*")
@@ -247,7 +251,11 @@ def parse_junit(path: Path) -> dict[str, dict]:
         prev = results.get(key)
         if prev and prev["outcome"] in ("failed", "error"):
             continue  # parametrised: any failure wins
-        results[key] = {"outcome": outcome, "message": message, "time": float(case.get("time") or 0)}
+        try:
+            duration = float(case.get("time") or 0)
+        except (TypeError, ValueError):
+            duration = 0.0
+        results[key] = {"outcome": outcome, "message": message, "time": duration}
     return results
 
 
@@ -319,7 +327,6 @@ def execute(project_dir: Path, fault: dict, mode: str) -> dict:
         shutil.copytree(project_dir, faulted_project, ignore=COPY_IGNORE)
         if mode == "docker":
             image = _build_sandbox_image(project_dir, workdir)
-            _run_pytest.sandbox_image = image
         baseline = _run_pytest(baseline_project, workdir, None, "baseline", mode, image)
         faulted = _run_pytest(faulted_project, workdir, fault, "faulted", mode, image)
         return {"mode": mode, "command": "python -m pytest -q (fixed command; plugin devdna_faults)",
@@ -345,6 +352,12 @@ def compare(impact: dict, observation: dict) -> dict:
                 "rows": [], "metrics": {}, "notes": notes}
     if fault["fault_state"].get("errors"):
         return {"status": "inconclusive", "reason": "Fault injection reported errors: " + "; ".join(fault["fault_state"]["errors"]),
+                "rows": [], "metrics": {}, "notes": notes}
+    if not fault["results"]:
+        # distinct from "fault never triggered": the faulted pytest process
+        # collected nothing at all, so no evidence exists either way
+        return {"status": "inconclusive",
+                "reason": "The faulted run collected no test results; nothing can be compared.",
                 "rows": [], "metrics": {}, "notes": notes}
 
     rows = []
@@ -404,8 +417,10 @@ def compare(impact: dict, observation: dict) -> dict:
         status, reason = "uncertain — covering tests mock the dependency", "All covering tests mock the dependency, so the prediction is uncertain."
     elif triggers == 0:
         status, reason = "inconclusive", "The injected fault was never triggered, so the run says nothing about this failure."
-    elif definite == 0:
-        status, reason = "inconclusive", "No test had a definite prediction that could be checked."
+    elif definite < MIN_DEFINITE_TO_GRADE:
+        status, reason = ("inconclusive",
+                          f"Only {definite} definite test prediction(s) could be checked; at least "
+                          f"{MIN_DEFINITE_TO_GRADE} are required before a run is graded.")
     elif fp == 0 and fn == 0:
         status, reason = "prediction_confirmed", f"All {definite} definite test predictions matched the observed outcomes."
     elif tp == 0 and tn == 0:
@@ -416,7 +431,7 @@ def compare(impact: dict, observation: dict) -> dict:
         notes.append(f"Uncertain (error handled on path) tests: {unc_f} failed, {unc_p} passed.")
     notes.append("This result covers this test suite under this injected fault only. It does not guarantee production behaviour.")
 
-    ai_reconciliation = {
+    deterministic_reconciliation = {
         "verdict_summary": f"DevDNA Empirical Verification: {definite} definite test prediction(s) reconciled against live pytest sandbox fault run.",
         "confusion_matrix": {
             "true_positive": tp,
@@ -432,4 +447,4 @@ def compare(impact: dict, observation: dict) -> dict:
         "deterministic_grade": "A+" if (fp == 0 and fn == 0 and definite > 0) else ("B" if (tp + tn) > (fp + fn) else "C"),
     }
 
-    return {"status": status, "reason": reason, "rows": rows, "metrics": metrics, "notes": notes, "ai_reconciliation": ai_reconciliation}
+    return {"status": status, "reason": reason, "rows": rows, "metrics": metrics, "notes": notes, "deterministic_reconciliation": deterministic_reconciliation}

@@ -25,7 +25,6 @@ class PredictionIn(BaseModel):
     scenario: str = Field(min_length=1, max_length=100)
     target_id: str = Field(min_length=1, max_length=400)
     custom_spec: dict | None = Field(default=None, description="Optional custom dynamic failure scenario specification.")
-    enable_ai_simulation: bool = Field(default=True, description="When true, synthesizes deep neuro-symbolic failure simulation.")
 
 
 class AIRequest(BaseModel):
@@ -37,10 +36,6 @@ class DynamicScenarioIn(AIRequest):
     prompt: str = Field(min_length=3, max_length=2000, description="Natural language description of custom failure to simulate.")
     target_id: str | None = Field(default=None, max_length=400, description="Optional component target id.")
 
-
-class MultimodalAuditIn(AIRequest):
-    diagram_type: str = Field(default="architecture_diagram", max_length=100)
-    notes: str = Field(default="", max_length=2000)
 
 
 class ChatMessage(BaseModel):

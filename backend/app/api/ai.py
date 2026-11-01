@@ -337,7 +337,6 @@ def synthesize_dynamic_scenario(project_id: str, body: DynamicScenarioIn, db: Se
 
 
 @router.post("/predictions/{prediction_id}/ai/discrepancy")
-@router.post("/predictions/{prediction_id}/discrepancy")
 def resolve_discrepancy(prediction_id: str, body: AIRequest = AIRequest(), db: Session = Depends(get_db)):
     pred = db.get(Prediction, prediction_id)
     if not pred:
@@ -432,7 +431,6 @@ def resolve_discrepancy(prediction_id: str, body: AIRequest = AIRequest(), db: S
 
 
 @router.get("/predictions/{prediction_id}/ai/discrepancy/latest")
-@router.get("/predictions/{prediction_id}/discrepancy/latest")
 def latest_discrepancy(prediction_id: str, db: Session = Depends(get_db)):
     pred = db.get(Prediction, prediction_id)
     if not pred:

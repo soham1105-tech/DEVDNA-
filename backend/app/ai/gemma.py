@@ -118,17 +118,6 @@ class DynamicScenarioSpec(BaseModel):
     mitigation_strategy: str = ""
 
 
-class NeuroSymbolicFailurePrediction(BaseModel):
-    semantic_summary: str
-    cascading_risk_score: float = 50.0
-    runtime_vulnerabilities: list[str] = Field(default_factory=list)
-    test_coverage_gap: list[str] = Field(default_factory=list)
-    blast_radius_assessment: str = ""
-    suggested_mitigations: list[Recommendation] = Field(default_factory=list)
-    confidence: Literal["low", "medium", "high"] = "medium"
-    evidence_used: list[str] = Field(default_factory=list)
-
-
 class DiscrepancyAnalysis(BaseModel):
     explanation: str
     generated_test: str
@@ -143,7 +132,6 @@ SCHEMAS = {
     "chat": ChatAnswer,
     "multimodal_audit": MultimodalAuditResult,
     "dynamic_scenario": DynamicScenarioSpec,
-    "neuro_symbolic_prediction": NeuroSymbolicFailurePrediction,
     "discrepancy": DiscrepancyAnalysis,
 }
 T = TypeVar("T", bound=BaseModel)

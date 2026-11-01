@@ -7,9 +7,15 @@ from app.experiments import runner
 from app.experiments.runner import _run_pytest, _scrubbed_env, choose_mode, compare
 
 
-def _impact(preds):
+def _impact(preds, fillers=True):
+    # 5 filler definite tests keep every compare() fixture above the
+    # MIN_DEFINITE_TO_GRADE threshold so the graded statuses are exercised
+    all_preds = dict(preds)
+    if fillers:
+        for i in range(5):
+            all_preds.setdefault(f"filler_pass_{i}", "pass")
     return {"tests": [{"name": n, "nodeid": f"tests/t.py::{n}", "junit_key": f"tests.t::{n}", "prediction": p, "path": []}
-                      for n, p in preds.items()]}
+                      for n, p in all_preds.items()]}
 
 
 def _obs(baseline, faulted, triggers=3, errors=None):
@@ -20,16 +26,31 @@ def _obs(baseline, faulted, triggers=3, errors=None):
                         "fault_state": {"triggers": triggers, "errors": errors or []}}}
 
 
+def _obs_for(preds, baseline, faulted, **kwargs):
+    """_obs, with the 5 filler definite tests lined up in both runs."""
+    all_baseline = dict(baseline)
+    all_faulted = dict(faulted)
+    for i in range(5):
+        n = f"filler_pass_{i}"
+        all_baseline.setdefault(n, "passed")
+        all_faulted.setdefault(n, "passed")
+    return _obs(all_baseline, all_faulted, **kwargs)
+
+
 def test_compare_confirmed():
-    c = compare(_impact({"a": "fail", "b": "pass"}), _obs({"a": "passed", "b": "passed"}, {"a": "error", "b": "passed"}))
+    c = compare(_impact({"a": "fail", "b": "pass"}), _obs_for({"a": "fail", "b": "pass"}, {"a": "passed", "b": "passed"}, {"a": "error", "b": "passed"}))
     assert c["status"] == "prediction_confirmed"
     assert c["metrics"]["accuracy"] == 1.0 and c["metrics"]["true_positive"] == 1
 
 
-def test_compare_partial_and_contradicted():
-    c = compare(_impact({"a": "fail", "b": "fail"}), _obs({"a": "passed", "b": "passed"}, {"a": "failed", "b": "passed"}))
+def test_compare_partial_and_contradicted(monkeypatch):
+    c = compare(_impact({"a": "fail", "b": "fail"}), _obs_for({"a": "fail", "b": "fail"}, {"a": "passed", "b": "passed"}, {"a": "failed", "b": "passed"}))
     assert c["status"] == "partially_confirmed" and c["metrics"]["false_positive"] == 1
-    c = compare(_impact({"a": "fail", "b": "pass"}), _obs({"a": "passed", "b": "passed"}, {"a": "passed", "b": "failed"}))
+    # a full contradiction: every definite prediction mismatched; the grading
+    # threshold is lowered here so the tiny fixture can reach that branch
+    monkeypatch.setattr(runner, "MIN_DEFINITE_TO_GRADE", 0)
+    c = compare(_impact({"a": "fail", "b": "pass"}, fillers=False),
+                _obs({"a": "passed", "b": "passed"}, {"a": "passed", "b": "failed"}))
     assert c["status"] == "prediction_contradicted"
 
 
@@ -44,9 +65,10 @@ def test_compare_inconclusive_cases():
 
 
 def test_uncertain_predictions_never_count_as_matches():
-    c = compare(_impact({"a": "may_fail", "b": "pass"}), _obs({"a": "passed", "b": "passed"}, {"a": "passed", "b": "passed"}))
+    c = compare(_impact({"a": "may_fail", "b": "pass"}), _obs_for({"a": "may_fail", "b": "pass"}, {"a": "passed", "b": "passed"}, {"a": "passed", "b": "passed"}))
     assert c["rows"][0]["verdict"] == "uncertain_passed"
-    assert c["metrics"]["true_negative"] == 1 and c["metrics"]["uncertain_passed"] == 1
+    # 1 named true negative + 5 filler passes; uncertain tests never count
+    assert c["metrics"]["true_negative"] == 6 and c["metrics"]["uncertain_passed"] == 1
 
 
 def test_untrusted_projects_are_blocked_without_docker(monkeypatch):
@@ -332,3 +354,18 @@ def test_build_sandbox_vendors_wheels_and_builds_offline(tmp_path, monkeypatch):
     assert reqs == "fastapi==0.115.0\npytest>=8.3\n"
     assert "--index-url" not in reqs
     assert (context / "wheels").is_dir()
+
+
+def test_compare_distinguishes_empty_faulted_run_from_no_trigger():
+    """'Faulted run collected nothing' and 'fault never triggered' are
+    different inconclusive reasons."""
+    imp = _impact({"a": "fail"})
+    empty_faulted = _obs({"a": "passed"}, {})
+    c = compare(imp, empty_faulted)
+    assert c["status"] == "inconclusive"
+    assert "collected no test results" in c["reason"]
+
+    no_trigger = _obs({"a": "passed"}, {"a": "passed"}, triggers=0)
+    c = compare(imp, no_trigger)
+    assert c["status"] == "inconclusive"
+    assert "never triggered" in c["reason"]
