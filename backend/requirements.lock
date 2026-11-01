@@ -84,7 +84,9 @@ python-dotenv==1.2.4
 python-multipart==0.0.33
     # via -r requirements.txt
 pyyaml==6.0.3
-    # via uvicorn
+    # via
+    #   -r requirements.txt
+    #   uvicorn
 requests==2.34.2
     # via
     #   google-auth
