@@ -17,10 +17,11 @@ from app.config import settings
 from app.db import get_db
 from app.experiments.runner import choose_mode, compare, execute, fault_spec
 from app.graph.engine import compute_impact
-from app.models import Experiment, Prediction, Project
-from app.schemas import ChangedFilesIn, ExperimentIn, PredictionIn
+from app.models import Experiment, Finding, Prediction, Project
+from app.schemas import ChangedFilesIn, ExperimentIn, PredictionIn, RemediationIn
 from app.services.analysis import load_graph
 from app.services.change_impact import changed_files_impact
+from app.services.remediation import verify_remediation
 from app.services.test_gaps import test_gaps
 from app.services.calibration import calibrate_impact, record_experiment_outcomes
 from app.services.serialize import experiment_out, prediction_out, python_present
@@ -135,6 +136,33 @@ def test_gaps_ep(project_id: str, db: Session = Depends(get_db)):
     run = require_run(db, p)
     _, _, g = load_graph(db, run.id)
     result = test_gaps(db, g, p.id)
+    result["project"] = {"id": p.id, "name": p.name}
+    result["run_id"] = run.id
+    return result
+
+
+@router.post("/projects/{project_id}/remediations/verify")
+def verify_remediation_ep(project_id: str, body: RemediationIn, db: Session = Depends(get_db)):
+    """Check a proposed patch on a disposable copy: re-analyse the patched
+    copy and report which findings disappear. The original source is never
+    modified and no tests are executed."""
+    p = get_project(db, project_id)
+    run = require_run(db, p)
+    rows = db.scalars(select(Finding).where(Finding.run_id == run.id)).all()
+    # the full set anchors the introduced-findings comparison; finding_ids
+    # only selects which findings get a per-finding status
+    original = [{"id": f.id, "rule": f.rule, "title": f.title, "component_id": f.component_id,
+                 "evidence": f.evidence or [], "description": f.description}
+                for f in rows]
+    wanted = set(body.finding_ids) if body.finding_ids else None
+    if wanted is not None and not (wanted & {f["id"] for f in original}):
+        raise HTTPException(422, detail={"code": "no_matching_findings",
+                                         "message": "None of the supplied finding_ids belong to this project's latest run."})
+    try:
+        result = verify_remediation(Path(p.source_path), body.files, original,
+                                    check_ids=body.finding_ids or None)
+    except ValueError as exc:
+        raise HTTPException(422, detail={"code": "invalid_remediation", "message": str(exc)})
     result["project"] = {"id": p.id, "name": p.name}
     result["run_id"] = run.id
     return result
