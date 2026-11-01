@@ -122,6 +122,12 @@ export const api = {
   dynamicScenario: (id, body) => call('post', `/api/projects/${id}/ai/dynamic-scenario`, body, AI),
 
   reportHistory: (id) => call('get', `/api/projects/${id}/reports`),
+
+  // Deterministic insight modules (change-impact, test gaps, reliability, PR review)
+  changedFilesImpact: (id, files) => call('post', `/api/projects/${id}/impact/changed-files`, { files }),
+  testGaps: (id) => call('get', `/api/projects/${id}/test-gaps`),
+  reliability: (id) => call('get', `/api/projects/${id}/reliability`),
+  prReview: (id, body) => call('post', `/api/projects/${id}/pr-review`, body),
 }
 
 /** Download a report file through the API and save it in the browser. */

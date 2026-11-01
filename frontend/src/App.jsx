@@ -10,6 +10,7 @@ import Architecture from './pages/Architecture'
 import ExperimentDetail from './pages/ExperimentDetail'
 import Experiments from './pages/Experiments'
 import Findings from './pages/Findings'
+import Insights from './pages/Insights'
 import NotFound from './pages/NotFound'
 import Overview from './pages/Overview'
 import Prediction from './pages/Prediction'
@@ -39,6 +40,7 @@ export default function App() {
                       <Route path="prediction" element={<Prediction />} />
                       <Route path="lab" element={<WhatIfLab />} />
                       <Route path="findings" element={<Findings />} />
+                      <Route path="insights" element={<Insights />} />
                       <Route path="experiments" element={<Experiments />} />
                       <Route path="experiments/:id" element={<ExperimentDetail />} />
                       <Route path="reports" element={<Reports />} />
