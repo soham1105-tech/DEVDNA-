@@ -46,6 +46,8 @@ def pr_review(db: Session, g, files: list[str], findings: list[dict],
     gap_map = {e["file"]: e for e in gaps["file_gaps"]}
     coverage = []
     for f in sorted(changed_norm):
+        if f not in {normalise_path(m) for m in impact["changed_files"]}:
+            continue  # unmapped files have no coverage claim — reported in unmapped_files
         e = gap_map.get(f)
         if e is None:
             coverage.append({"file": f, "status": "covered",

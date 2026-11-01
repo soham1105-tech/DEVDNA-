@@ -79,6 +79,12 @@ DevDNA constructs a **digital twin** of any Python or JavaScript/TypeScript code
 
 ---
 
+### Insights: Deterministic PR Review, Test Gaps & Reliability
+<img src="assets/insights-page.png" alt="DevDNA Insights page" width="95%" />
+*One deterministic review package per proposed change: per-file test coverage, touching findings and mechanically derived next steps — predictions, never verdicts.*
+
+---
+
 ### Dual Dark & Bright Theming
 <img src="assets/settings-appearance.png" alt="DevDNA Settings and Theming" width="95%" />
 *Switch instantly between DevDNA's signature dark digital-twin mode and high-contrast bright mode with `⌘+Shift+D`.*
