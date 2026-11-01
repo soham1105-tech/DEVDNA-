@@ -28,14 +28,14 @@ Request: `POST /api/projects/6d481a675e0a/impact/changed-files` with
 - No changed file lacked test coverage (`uncovered_files: []`) — the backend tests
   exercise all four code files.
 
-## Known limitation observed during this demo
+## Former limitation, now fixed
 
-When the whole repository (including the `backend/` prefix) is uploaded as one
-project, the Python analyser resolves imports relative to `backend/` while component
-paths keep the `backend/` prefix, so cross-module import edges do not resolve and
-changed-file impact on such a project reports no cross-file dependents. Analysing
-`backend/` as its own project (as above) resolves imports correctly. The output stays
-honest in both cases — it reports what the graph actually contains.
+This demo originally documented that whole-repo uploads with a nested `backend/`
+prefix resolved no cross-module import edges (components keyed `backend.app.*`
+while imports say `app.*`). The analyser now strips container directories above
+the first package (a directory containing an `__init__.py`) from module names, so
+such uploads resolve imports correctly and changed-file impact reports real
+cross-file dependents. Regression tests: `backend/tests/test_nested_root.py`.
 
 ## Predictions are not proof
 

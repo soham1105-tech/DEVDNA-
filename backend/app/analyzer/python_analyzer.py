@@ -330,7 +330,25 @@ class Analyzer:
             parts = parts[1:]
         if parts[-1] == "__init__":
             parts = parts[:-1]
+        parts = self._strip_container_dirs(parts)
         return ".".join(parts) or "__root__"
+
+    def _strip_container_dirs(self, parts: list[str]) -> list[str]:
+        """Drop leading directories that are repo containers, not packages.
+
+        A whole-repo upload whose code lives under e.g. `backend/` yields
+        component paths like `backend/app/graph/engine.py`, but the files
+        import `app.graph.engine` — the container dir must not become part
+        of the module name or every internal import fails to resolve. The
+        first path segment containing an `__init__.py` is treated as the
+        import root; segments above it are stripped. When no directory in
+        the path has an `__init__.py`, nothing is stripped (namespace-style
+        repos keep their current, working behaviour).
+        """
+        for i in range(len(parts)):
+            if (self.root / "/".join(parts[: i + 1]) / "__init__.py").exists():
+                return parts[i:]
+        return parts
 
     def _load_module(self, rel: str):
         path = self.root / rel
