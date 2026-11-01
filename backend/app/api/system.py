@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -26,8 +26,12 @@ def health(db: Session = Depends(get_db)):
         db.execute(text("SELECT 1"))
         database = "ok"
     except Exception:
-        database = "error"
-    return {"status": "ok" if database == "ok" else "degraded", "version": VERSION, "database": database,
+        # fail closed for readiness probes: a load balancer must not route
+        # traffic to an instance that cannot reach its database
+        return JSONResponse(status_code=503,
+                            content={"status": "degraded", "version": VERSION, "database": "error",
+                                     "ai": {"configured": gemma.configured, "model": gemma.model}})
+    return {"status": "ok", "version": VERSION, "database": database,
             "ai": {"configured": gemma.configured, "model": gemma.model}}
 
 

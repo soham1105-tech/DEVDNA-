@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import db as dbmod
-from app.api import agentguard, ai, architecture, experiments, guard, pr_review, projects, system, traces
+from app.api import agentguard, ai, architecture, experiments, guard, hardening, pr_review, projects, system, traces
 from app.api.experiments import recover_stale_experiments
 from app.config import settings
 
@@ -50,6 +50,8 @@ app = FastAPI(
 # Guard first (innermost) so CORS stays the outermost layer and error
 # responses still reach the browser with CORS headers attached.
 app.add_middleware(guard.GuardMiddleware)
+app.add_middleware(hardening.SecurityHeadersMiddleware)
+app.add_middleware(hardening.RequestIdMiddleware)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=False,
                    allow_methods=["GET", "POST", "PATCH", "DELETE"],
                    allow_headers=["Content-Type", "X-DevDNA-Token"])

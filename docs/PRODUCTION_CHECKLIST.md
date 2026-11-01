@@ -83,3 +83,37 @@ and terminate TLS at a reverse proxy.
 3. `GET /docs` without a token → 401 (schema does not leak).
 4. `GET /api/projects` with `X-DevDNA-Token` → 200.
 5. Load the frontend, open Settings, paste the token, run the demo analysis.
+
+## 6. Runtime hardening (Module 7, always on)
+
+These need no configuration — they are built into the backend:
+
+- **Readiness is fail-closed.** `GET /api/health` answers 200 `{"status":"ok"}`
+  only when the database responds; a database error answers **503**
+  `{"status":"degraded"}` so a load balancer stops routing to a broken
+  instance. The route stays token-exempt so probes work.
+- **Security headers** on every response: `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
+  `Cache-Control: no-store` (API responses should never be cached or framed).
+- **Request IDs.** Every response carries `X-Request-ID` (server-generated,
+  16 hex chars; client-supplied values are ignored so nothing is echoed back).
+  Every request writes one access-log line with method, path, status, duration
+  and request ID — health probes are excluded to keep logs readable. Correlate
+  a user report to a log line via the response's `X-Request-ID`.
+
+## 7. Operations
+
+- **Backups:** stop writes (or accept a moment of WAL churn) and copy
+  `backend/data/devdna.db` together with `devdna.db-wal`/`-shm` if present.
+  Projects' uploaded sources live under `backend/data/projects/` and are part
+  of any complete backup.
+- **Log rotation:** access logs go to the `devdna.access` logger; configure
+  rotation in your process manager (e.g. uvicorn `--log-config` or a
+  logrotate/copytruncate policy on the container's stdout collector).
+- **WAL growth:** SQLite runs in WAL mode with a 30 s busy timeout; long-lived
+  read connections checkpoint automatically. If the `-wal` file grows large
+  after heavy imports, run `PRAGMA wal_checkpoint(TRUNCATE);` once during a
+  quiet period.
+- **Graceful restart:** a restart marks any queued/running analysis runs and
+  experiments as failed with a re-run hint (they are never silently re-run or
+  deleted) — re-trigger them after the restart.
