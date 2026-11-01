@@ -56,11 +56,43 @@ def _is_js_file(rel: str) -> bool:
 
 
 def _merge_results(py: dict, js: dict) -> dict:
-    """Merge a Python and a JS/TS analysis into one result (python keys win on scalar ties)."""
+    """Merge a Python and a JS/TS analysis into one result.
+
+    Component ids that collide across languages (both analyse a `route:GET /ping`)
+    are namespaced with a `js:` prefix on the JS side, and the JS edges that
+    referenced the old ids are remapped. Edges are then deduplicated by
+    (type, source, target) endpoint, not just by edge id. Coverage counts come
+    from the merged component/edge lists, never from per-language sums.
+    """
     seen_ids = {c["id"] for c in py["components"]}
-    js_components = [c for c in js["components"] if c["id"] not in seen_ids]
+    js_components = []
+    id_map: dict[str, str] = {}
+    for c in js["components"]:
+        cid = c["id"]
+        if cid in seen_ids:
+            renamed = f"js:{cid}"
+            while renamed in seen_ids:
+                renamed = f"js:{renamed}"
+            id_map[cid] = renamed
+            c = {**c, "id": renamed}
+            seen_ids.add(renamed)
+        js_components.append(c)
+
+    def remap(component_id: str) -> str:
+        return id_map.get(component_id, component_id)
+
+    py_endpoints = {(e["source"], e["target"], e["type"]) for e in py["edges"]}
     seen_edges = {e["id"] for e in py["edges"]}
-    js_edges = [e for e in js["edges"] if e["id"] not in seen_edges]
+    js_edges = []
+    for e in js["edges"]:
+        source, target = remap(e["source"]), remap(e["target"])
+        if (source, target, e["type"]) in py_endpoints:
+            continue
+        eid = f"{e['type']}|{source}|{target}"
+        if eid in seen_edges:
+            continue
+        js_edges.append({**e, "id": eid, "source": source, "target": target})
+        seen_edges.add(eid)
 
     languages = dict(py["scan"]["languages"])
     for lang, count in js["scan"]["languages"].items():
@@ -79,11 +111,18 @@ def _merge_results(py: dict, js: dict) -> dict:
         deps.setdefault((d["name"], d["manifest"]), d)
     coverage = {**py["coverage"], **js["coverage"]}
     coverage["parse_errors"] = py["coverage"]["parse_errors"] + js["coverage"]["parse_errors"]
-    for k in ("routes", "routes_with_tests", "tests"):  # shared route/test id space -> sum
-        coverage[k] = py["coverage"].get(k, 0) + js["coverage"].get(k, 0)
+    # coverage is counted from the merged lists: summing per-language counts
+    # double-counts routes/edges whose ids collided and were namespaced
+    components = py["components"] + js_components
+    edges = py["edges"] + js_edges
+    route_ids = {c["id"] for c in components if c["type"] == "route"}
+    tested = {e["target"] for e in edges if e["type"] == "exercises"}
+    coverage["routes"] = len(route_ids)
+    coverage["routes_with_tests"] = len(route_ids & tested)
+    coverage["tests"] = sum(1 for c in components if c["type"] == "test")
     return {
-        "components": py["components"] + js_components,
-        "edges": py["edges"] + js_edges,
+        "components": components,
+        "edges": edges,
         "scan": {
             **py["scan"],
             "languages": languages,

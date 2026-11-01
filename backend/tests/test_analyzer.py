@@ -113,3 +113,81 @@ def test_function_local_reassignment_does_not_recurse(tmp_path: Path):
         encoding="utf-8")
     r = analyse_project(tmp_path)
     assert "func:util.scrub" in _ids(r, "function")
+
+
+# --- regression tests for collision, merge, lambda, deep chains, unresolved ---
+
+def _analyse(tmp_path):
+    return analyse_project(tmp_path)
+
+
+def test_module_name_collision_does_not_drop_either_file(tmp_path):
+    """pkg.py and pkg/__init__.py map to the same module name; both must be
+    analysed and the collision must be reported, never silent."""
+    (tmp_path / "pkg.py").write_text("def from_flat():\n    return 1\n", encoding="utf-8")
+    init = tmp_path / "pkg"
+    init.mkdir()
+    (init / "__init__.py").write_text("def from_init():\n    return 2\n", encoding="utf-8")
+    r = _analyse(tmp_path)
+    funcs = _ids(r, "function")
+    assert "func:pkg.from_flat" in funcs and "func:pkg.from_init" in funcs
+    collision = [e for e in r["coverage"]["parse_errors"] if "is defined by both" in e.get("error", "")]
+    assert collision and "pkg.py" in collision[0]["error"] and "pkg/__init__.py" in collision[0]["error"]
+
+
+def test_lambda_body_calls_produce_edges(tmp_path):
+    (tmp_path / "l.py").write_text(
+        "def fetch_data():\n    return 1\n"
+        "def use_lambda():\n"
+        "    fetch = lambda: fetch_data()\n"
+        "    return fetch()\n",
+        encoding="utf-8",
+    )
+    r = _analyse(tmp_path)
+    e = _edge(r, "calls", "func:l.use_lambda", "func:l.fetch_data")
+    assert e is not None and e["classification"] == "confirmed"
+
+
+def test_deep_self_attribute_chain_resolves(tmp_path):
+    (tmp_path / "d.py").write_text(
+        "class Pool:\n"
+        "    def query(self):\n        return 1\n"
+        "class Database:\n"
+        "    def __init__(self):\n        self.pool = Pool()\n"
+        "class App:\n"
+        "    def __init__(self):\n        self.db = Database()\n"
+        "    def run(self):\n        return self.db.pool.query()\n",
+        encoding="utf-8",
+    )
+    r = _analyse(tmp_path)
+    e = _edge(r, "calls", "func:d.App.run", "func:d.Pool.query")
+    assert e is not None and e["classification"] == "inferred"
+
+
+def test_deep_module_chain_resolves(tmp_path):
+    (tmp_path / "helpers").mkdir()
+    (tmp_path / "helpers" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "helpers" / "inner.py").write_text(
+        "class Inner:\n    def run(self):\n        return 1\n", encoding="utf-8")
+    (tmp_path / "caller.py").write_text(
+        "import helpers.inner\n"
+        "def go():\n    return helpers.inner.Inner.run()\n",
+        encoding="utf-8",
+    )
+    r = _analyse(tmp_path)
+    e = _edge(r, "calls", "func:caller.go", "func:helpers.inner.Inner.run")
+    assert e is not None and e["classification"] in ("confirmed", "inferred")
+
+
+def test_unresolved_calls_count_every_call_without_an_edge(tmp_path):
+    (tmp_path / "u.py").write_text(
+        "def f():\n"
+        "    print('builtin stays uncounted')\n"
+        "    unknown_obj.method()\n"
+        "    handlers['x']()\n",
+        encoding="utf-8",
+    )
+    r = _analyse(tmp_path)
+    # print() is a builtin (never an edge, never counted); the other two calls
+    # produced no edge and must both be counted
+    assert r["coverage"]["unresolved_calls"] == 2

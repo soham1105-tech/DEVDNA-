@@ -5,7 +5,7 @@ import zipfile
 import pytest
 
 from app.analyzer.ingest import ZipSecurityError, safe_extract_zip, scan_tree
-from app.analyzer.redact import REDACTED, redact
+from app.analyzer.redact import REDACTED, find_secrets, redact
 from app.config import settings
 
 
@@ -190,3 +190,48 @@ def test_stored_snippets_are_redacted_on_read(client, sample_project):
     detail = next(r for r in rows if r["id"] == fid)
     assert secret not in str(detail["evidence"])
     assert REDACTED in str(detail["evidence"])
+
+
+# --- (f) redaction: references are not literals; shaped vs confirmed ---------
+
+def test_references_in_bare_assignments_are_left_alone():
+    """Calls, os.environ lookups and dotted attribute chains are references,
+    not secret literals - normal code must survive untouched."""
+    for code in ("token = os.environ.get('API_KEY')",
+                 "secret = get_secret_value()",
+                 "api_key = settings.API_KEY",
+                 "password = os.environ['DB_PASSWORD']",
+                 "client_secret = config.auth.client_secret"):
+        out, n = redact(code)
+        assert out == code, (code, out)
+
+
+def test_bare_literal_secrets_are_still_redacted():
+    out, n = redact("password = hunter2hunter2")
+    assert "hunter2hunter2" not in out and n == 1
+
+
+def test_git_sha_is_not_reported_as_an_aws_secret():
+    """A 40-char git commit SHA is secret-shaped at best: not redacted and
+    never reported by find_secrets."""
+    sha = "a" * 40
+    mixed = f"see https://github.com/o/r/commit/{sha} and {sha}"
+    out, n = redact(mixed)
+    assert out == mixed and n == 0
+    assert find_secrets(mixed) == []
+
+
+def test_aws_secret_key_is_redacted_but_not_confirmed():
+    key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    line = f"backup = {key}"
+    out, n = redact(line)
+    assert key not in out and n == 1  # redacted (shaped counts as a redaction)
+    assert find_secrets(line) == []   # but not reported as a confirmed secret
+
+
+def test_confirmed_secrets_are_still_reported():
+    line = 'password = "hunter2hunter2"'
+    assert find_secrets(line) == [{"line": 1, "count": 1}]
+    mixed = "token = ghp_" + "a" * 36 + "\nsee commit " + "b" * 40 + "\n"
+    hits = find_secrets(mixed)
+    assert [h["line"] for h in hits] == [1]  # only the confirmed line

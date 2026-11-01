@@ -15,20 +15,23 @@ import re
 
 REDACTED = "***REDACTED***"
 
-_PATTERNS: list[tuple[str, re.Pattern]] = [
-    ("private_key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)")),
-    ("aws_access_key", re.compile(r"\b(AKIA|ASIA)[0-9A-Z]{16}\b")),
-    ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
-    ("github_token", re.compile(r"\b(ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}\b")),
-    ("slack_token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b")),
-    ("openai_style_key", re.compile(r"\bsk-[A-Za-z0-9_\-]{20,}\b")),
-    ("jwt", re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b")),
-    ("bearer_token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{16,}")),
-    ("stripe_live_key", re.compile(r"\bsk_live_[A-Za-z0-9]{16,}\b")),
-    # AWS secret access keys are exactly 40 base64-ish characters. The shape
-    # has no identifying prefix, so this pattern is generic and runs last
-    # (deliberate over-redaction beats leaking the key).
-    ("aws_secret_key", re.compile(r"\b[A-Za-z0-9/+=]{40}\b")),
+# Patterns that identify a secret with high confidence get confirmed=True.
+# The bare 40-character AWS-secret shape has no identifying prefix — a git
+# commit SHA is also exactly 40 hex characters — so it is only "secret-shaped":
+# it is still redacted (over-redaction beats leaking) but find_secrets() does
+# not report it as a secret hit. Pure-lowercase-hex 40-char strings (git SHAs)
+# are not even redacted.
+_PATTERNS: list[tuple[str, re.Pattern, bool]] = [
+    ("private_key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)"), True),
+    ("aws_access_key", re.compile(r"\b(AKIA|ASIA)[0-9A-Z]{16}\b"), True),
+    ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b"), True),
+    ("github_token", re.compile(r"\b(ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}\b"), True),
+    ("slack_token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b"), True),
+    ("openai_style_key", re.compile(r"\bsk-[A-Za-z0-9_\-]{20,}\b"), True),
+    ("jwt", re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\b"), True),
+    ("bearer_token", re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-]{16,}"), True),
+    ("stripe_live_key", re.compile(r"\bsk_live_[A-Za-z0-9]{16,}\b"), True),
+    ("aws_secret_key", re.compile(r"\b(?![0-9a-f]{40}\b)[A-Za-z0-9/+=]{40}\b"), False),
 ]
 
 # key = "value" style assignments where the key name looks sensitive
@@ -63,55 +66,73 @@ _URL_QUERY_KEY = re.compile(
 
 
 def redact(text: str) -> tuple[str, int]:
-    """Return (redacted_text, number_of_redactions)."""
+    """Return (redacted_text, number_of_redactions), counting both confirmed
+    and secret-shaped matches (everything redacted is counted)."""
+    redacted, confirmed, shaped = _redact(text)
+    return redacted, confirmed + shaped
+
+
+def _redact(text: str) -> tuple[str, int, int]:
+    """Return (redacted_text, confirmed_redactions, shaped_redactions)."""
     if not text:
-        return text, 0
-    count = 0
+        return text, 0, 0
+    confirmed = 0
+    shaped = 0
 
-    def _sub_all(m):
-        nonlocal count
-        count += 1
-        return REDACTED
+    def _sub_pattern(is_confirmed: bool):
+        def sub(m):
+            nonlocal confirmed, shaped
+            if is_confirmed:
+                confirmed += 1
+            else:
+                shaped += 1
+            return REDACTED
+        return sub
 
-    for _, pat in _PATTERNS:
-        text = pat.sub(_sub_all, text)
+    for _, pat, is_confirmed in _PATTERNS:
+        text = pat.sub(_sub_pattern(is_confirmed), text)
 
     def _sub_assign(m):
-        nonlocal count
+        nonlocal confirmed
         val = m.group("val")
         if val == REDACTED or val.startswith("${") or val.lower() in {"changeme", "your-key-here", "placeholder"}:
             return m.group(0)
-        count += 1
+        confirmed += 1
         return f"{m.group('key')}{m.group('sep')}{m.group('q')}{REDACTED}{m.group('q')}"
 
     text = _ASSIGNMENT.sub(_sub_assign, text)
 
     def _sub_url(m):
-        nonlocal count
-        count += 1
+        nonlocal confirmed
+        confirmed += 1
         return f"{m.group('pre')}{REDACTED}{m.group('at')}"
 
     text = _URL_CREDS.sub(_sub_url, text)
 
     def _sub_assign_bare(m):
-        nonlocal count
+        nonlocal confirmed
         val = m.group("val")
         if val.lower() in _BENIGN_VALUES:
             return m.group(0)
-        count += 1
+        # calls (password = get_secret()), os.environ lookups and dotted
+        # attribute chains (settings.API_KEY) are references, not literals
+        tail = m.string[m.end():m.end() + 1]
+        if tail == "(" or re.match(r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+$", val):
+            return m.group(0)
+        confirmed += 1
         return f"{m.group('key')}{m.group('sep')}{REDACTED}"
 
     text = _ASSIGNMENT_BARE.sub(_sub_assign_bare, text)
 
     def _sub_query(m):
-        nonlocal count
+        nonlocal confirmed
         if m.group("val") == REDACTED:
             return m.group(0)
-        count += 1
+        confirmed += 1
         return f"{m.group(1)}{REDACTED}"
 
     text = _URL_QUERY_KEY.sub(_sub_query, text)
-    return text, count
+    return text, confirmed, shaped
 
 
 def redact_obj(obj):
@@ -130,10 +151,15 @@ def redact_obj(obj):
 
 
 def find_secrets(text: str) -> list[dict]:
-    """Locate likely secrets by line (values are not returned)."""
+    """Locate likely secrets by line (values are not returned).
+
+    Only confirmed matches are reported: secret-shaped lines (e.g. a bare
+    40-character blob, which a git commit SHA also matches) are redacted in
+    snippets but not surfaced as secret hits.
+    """
     hits = []
     for lineno, line in enumerate(text.splitlines(), start=1):
-        _, n = redact(line)
-        if n:
-            hits.append({"line": lineno, "count": n})
+        _, confirmed, _ = _redact(line)
+        if confirmed:
+            hits.append({"line": lineno, "count": confirmed})
     return hits

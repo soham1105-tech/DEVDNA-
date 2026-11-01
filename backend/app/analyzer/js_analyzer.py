@@ -1154,6 +1154,7 @@ class JSAnalyzer:
         self.third_party: set[str] = set()
         self.stats = {"resolved_calls": 0, "unresolved_calls": 0, "library_calls": 0, "functions": 0, "classes": 0}
         self.parse_errors: list[dict] = []
+        self._modules_by_name: dict[str, dict] = {}  # first module wins a name; collisions are reported
         self.secret_hits: list[dict] = []
         self.http_findings: list[dict] = []
         self.broad_excepts: list[dict] = []
@@ -1313,8 +1314,18 @@ class JSAnalyzer:
     # -- components
     def _index_components(self):
         for model in self.models.values():
-            if not model["is_test"]:
-                self.add_component(f"module:{model['module']}", "module", model["module"], model["rel"], 1)
+            if model["is_test"]:
+                continue
+            first = self._modules_by_name.get(model["module"])
+            if first is not None and first["rel"] != model["rel"]:
+                self.parse_errors.append({
+                    "file": model["rel"], "line": 1,
+                    "error": f"module name '{model['module']}' collides with {first['rel']}; both files are analysed, "
+                             f"cross-module resolution prefers {first['rel']}",
+                })
+            else:
+                self._modules_by_name.setdefault(model["module"], model)
+            self.add_component(f"module:{model['module']}", "module", model["module"], model["rel"], 1)
         for model in self.models.values():
             if model["is_test"]:
                 continue

@@ -190,7 +190,10 @@ class Analyzer:
         self.root = Path(root)
         self.tree = tree
         self.cache = cache or FileCache(None, use_cache=False)
+        # keyed by relative path: pkg.py and pkg/__init__.py must not overwrite
+        # each other (they map to the same dotted module name)
         self.modules: dict[str, ModuleInfo] = {}
+        self._modules_by_name: dict[str, ModuleInfo] = {}
         self.components: dict[str, dict] = {}
         self.edges: dict[str, dict] = {}
         self.parse_errors: list[dict] = []
@@ -382,7 +385,16 @@ class Analyzer:
         base = rel.split("/")[-1]
         is_test = base.startswith("test_") or base.endswith("_test.py") or base == "conftest.py"
         mod = ModuleInfo(name=name, rel=rel, tree=tree, lines=lines, is_test=is_test)
-        self.modules[name] = mod
+        self.modules[rel] = mod
+        first = self._modules_by_name.get(name)
+        if first is not None and first.rel != rel:
+            self.parse_errors.append({
+                "file": rel, "line": None,
+                "error": f"module name '{name}' is defined by both {first.rel} and {rel}; "
+                         f"both files are analysed, cross-module resolution prefers {first.rel}",
+            })
+        else:
+            self._modules_by_name.setdefault(name, mod)
 
     def _resolve_relative(self, mod: ModuleInfo, level: int, module: str | None) -> str:
         pkg = mod.name.split(".")
@@ -534,7 +546,7 @@ class Analyzer:
         parts = name.split(".")
         for i in range(len(parts), 0, -1):
             cand = ".".join(parts[:i])
-            if cand in self.modules:
+            if cand in self._modules_by_name:
                 return cand
         return None
 
@@ -584,9 +596,9 @@ class Analyzer:
         parts = fq.split(".")
         for i in range(len(parts), 0, -1):
             modname = ".".join(parts[:i])
-            if modname not in self.modules:
+            if modname not in self._modules_by_name:
                 continue
-            mod = self.modules[modname]
+            mod = self._modules_by_name[modname]
             rest = parts[i:]
             if not rest:
                 return ("module", modname)
@@ -643,14 +655,14 @@ class Analyzer:
         parts = cls_clean.split(".")
         for i in range(len(parts) - 1, 0, -1):
             modname = ".".join(parts[:i])
-            if modname in self.modules:
+            if modname in self._modules_by_name:
                 return modname, ".".join(parts[i:])
         return None, cls_clean
 
     def find_method(self, cls_fq: str, name: str, depth: int = 0) -> str | None:
         cls_clean = cls_fq[6:] if cls_fq.startswith("class:") else cls_fq
         modname, cls = self._split_class_fq(cls_clean)
-        mod = self.modules.get(modname) if modname else None
+        mod = self._modules_by_name.get(modname) if modname else None
         if not mod or depth > 4:
             return None
         if f"{cls}.{name}" in mod.functions:
@@ -985,7 +997,7 @@ class Analyzer:
                                 self.add_edge(rid, m, "handled_by", "confirmed", self.ev(mod, line, f"DRF router action '{act}'"))
                                 self.frameworks.add("Django")
                         modname, clsname = self._split_class_fq(cls_fq)
-                        cmod = self.modules.get(modname)
+                        cmod = self._modules_by_name.get(modname)
                         if cmod and clsname in cmod.classes:
                             cnode = cmod.classes[clsname]
                             for item in cnode.body:
@@ -1055,8 +1067,8 @@ class Analyzer:
                         if cfunc == "include" and target_node.args:
                             inc_arg = target_node.args[0]
                             inc_mod_name = const_str(inc_arg)
-                            if inc_mod_name and inc_mod_name in self.modules:
-                                inc_mod = self.modules[inc_mod_name]
+                            if inc_mod_name and inc_mod_name in self._modules_by_name:
+                                inc_mod = self._modules_by_name[inc_mod_name]
                                 for stmt in inc_mod.tree.body:
                                     if isinstance(stmt, ast.Assign):
                                         for t in stmt.targets:
@@ -1105,9 +1117,9 @@ class Analyzer:
         if parts[0] in mod.bindings:
             fq = ".".join([mod.bindings[parts[0]]] + parts[1:])
             modname, _, var = fq.rpartition(".")
-            if modname in self.modules and var in self.modules[modname].routers:
+            if modname in self._modules_by_name and var in self._modules_by_name[modname].routers:
                 return fq
-            if fq in self.modules:  # e.g. `from app.routes import products` then products.router
+            if fq in self._modules_by_name:  # e.g. `from app.routes import products` then products.router
                 return None
         return None
 
@@ -1139,7 +1151,7 @@ class Analyzer:
         if attr not in ROUTE_DECORATORS or router_fq is None:
             return
         rmod_name, _, rvar = router_fq.rpartition(".")
-        router = self.modules[rmod_name].routers[rvar]
+        router = self._modules_by_name[rmod_name].routers[rvar]
         path = const_str(dec.args[0]) if dec.args else None
         for kw in dec.keywords:
             if kw.arg == "path":
@@ -1219,8 +1231,8 @@ class Analyzer:
                 prefix = f"{mod.name}.{nested_qual}" if kind == "class" else f"func:{mod.name}.{nested_qual}"
                 fn.local_defs.setdefault(node.name, (kind, prefix))
                 return
-            if isinstance(node, ast.Lambda):
-                return
+            # lambda bodies are walked under the enclosing function (there is no
+            # separate component for a lambda), so calls inside them produce edges
             if isinstance(node, (ast.Try, getattr(ast, "TryStar", ast.Try))):
                 handlers = [{"names": handler_names(h), "reraises": has_raise(h.body), "line": h.lineno} for h in node.handlers]
                 for h in node.handlers:
@@ -1337,26 +1349,75 @@ class Analyzer:
                     w["data"]["launcher_methods"] = sorted(launchers)
                     self.add_edge(f"class:{cls_fq}", wid, "runs_worker", "confirmed", self.ev(mod, call.lineno, f"starts {r[1]}"))
 
+    def _resolve_self_chain(self, mod: ModuleInfo, fn: FuncCtx, parts: list[str]):
+        """Resolve self.a.b.c.method() by walking attribute types class by class.
+
+        Each intermediate attribute must map to a constructed class (via
+        class_attr_types); the final segment is resolved as a method on the
+        class it landed on. Returns None when any step is unknown.
+        """
+        module_name, cls_path = mod.name, fn.cls
+        for step in parts[1:-1]:
+            t = self._modules_by_name[module_name].class_attr_types.get(cls_path, {}).get(step)
+            if not t:
+                return None
+            r = self.class_of_call(self._modules_by_name[module_name], t[1], None)
+            if r and r[0] == "class":
+                module_name, cls_path = self._split_class_fq(r[1])
+            else:
+                return None
+        m = self.find_method(f"{module_name}.{cls_path}", parts[-1])
+        return ("func_inferred", m) if m else None
+
+    def _resolve_long_chain(self, mod: ModuleInfo, fn: FuncCtx, parts: list[str]):
+        """Resolve 4+-part chains by splitting them into a known prefix and a
+        one-step attribute tail: pkg.mod.Class.method() -> Class.method.
+
+        Longer tails (settings.db.engine.connect()) need instance tracking the
+        static model does not have; they stay unresolved and are counted.
+        """
+        for split in range(len(parts) - 2, 0, -1):
+            r = self.resolve_name(mod, parts[:split], fn)
+            if not r:
+                continue
+            tail = parts[split:]
+            if len(tail) != 1:
+                return None
+            if r[0] == "class":
+                m = self.find_method(r[1], tail[0])
+                return ("func_inferred", m) if m else None
+            if r[0] == "lib":
+                return ("lib_method", r[1], tail[0])
+            return None
+        return None
+
     def _handle_call(self, mod: ModuleInfo, fn: FuncCtx, call: ast.Call, tries):
         parts = dotted(call.func)
         res = None
         if parts:
             if parts[0] == "self" and fn.cls:
-                cls_fq = f"{mod.name}.{fn.cls}"
-                if len(parts) == 2:
-                    m = self.find_method(cls_fq, parts[1])
-                    res = ("func", m) if m else None
-                elif len(parts) == 3:
-                    t = mod.class_attr_types.get(fn.cls, {}).get(parts[1])
-                    if t:
-                        r = self.class_of_call(mod, t[1], None)
-                        if r and r[0] == "class":
-                            m = self.find_method(r[1], parts[2])
-                            res = ("func_inferred", m) if m else None
-                        elif r and r[0] == "lib":
-                            res = ("lib_method", r[1], parts[2])
+                res = self._resolve_self_chain(mod, fn, parts)
+                if res is None and len(parts) <= 3:
+                    cls_fq = f"{mod.name}.{fn.cls}"
+                    if len(parts) == 2:
+                        m = self.find_method(cls_fq, parts[1])
+                        res = ("func", m) if m else None
+                    elif len(parts) == 3:
+                        t = mod.class_attr_types.get(fn.cls, {}).get(parts[1])
+                        if t:
+                            r = self.class_of_call(mod, t[1], None)
+                            if r and r[0] == "class":
+                                m = self.find_method(r[1], parts[2])
+                                res = ("func_inferred", m) if m else None
+                            elif r and r[0] == "lib":
+                                res = ("lib_method", r[1], parts[2])
             else:
                 res = self.resolve_name(mod, parts, fn)
+            if res is None and len(parts) > 3 and parts[0] != "self":
+                # deeper chains: resolve the longest understood prefix and walk
+                # the remaining attribute steps (pkg.mod.Class.method(),
+                # settings.db.engine.connect(), ...)
+                res = self._resolve_long_chain(mod, fn, parts)
         elif isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Call):
             r = self.class_of_call(mod, call.func.value, fn)
             if r and r[0] == "class":
@@ -1366,7 +1427,9 @@ class Analyzer:
                 res = ("lib_method", r[1], call.func.attr)
 
         if res is None:
-            if parts and len(parts) == 1 and parts[0] not in BUILTIN_NAMES:
+            # every call that produced no edge counts as unresolved, except
+            # single-name builtin calls (they can never produce an edge)
+            if not parts or parts[0] not in BUILTIN_NAMES or len(parts) > 1:
                 self.stats["unresolved_calls"] += 1
             return
         kind = res[0]
