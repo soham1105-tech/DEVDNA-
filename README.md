@@ -9,9 +9,9 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4.1-38bdf8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Google Gemma](https://img.shields.io/badge/Model-Gemma_4_26B-8b5cf6?logo=google&logoColor=white)](https://ai.google.dev/gemma)
 
-**Predict failure blast radius in Python codebases, and prove or disprove the prediction by injecting faults into real pytest test suites.**
+**Predict failure blast radius in Python & JavaScript/TypeScript codebases, prove or disprove the prediction by injecting faults into real pytest test suites, audit AI-agent configurations for security risks, and turn every experiment into a durable reliability memory.**
 
-[Explore Architecture](docs/ARCHITECTURE.md) • [Algorithm Reference](docs/ALGORITHM.md) • [Security & Isolation](docs/SECURITY.md) • [Production Checklist](docs/PRODUCTION_CHECKLIST.md) • [Contributing](CONTRIBUTING.md)
+[Explore Architecture](docs/ARCHITECTURE.md) • [Algorithm Reference](docs/ALGORITHM.md) • [Security & Isolation](docs/SECURITY.md) • [AgentGuard](docs/AGENTGUARD.md) • [Change Impact](docs/CHANGE_IMPACT.md) • [Test Gaps](docs/TEST_GAPS.md) • [Remediation](docs/REMEDIATION.md) • [Reliability](docs/RELIABILITY.md) • [PR Review](docs/PR_REVIEW.md) • [Production Checklist](docs/PRODUCTION_CHECKLIST.md) • [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -36,7 +36,7 @@ In growing Python systems, answering a deceptively simple question is notoriousl
 
 ## 2. The Solution: A Deterministic Digital Twin with an AI Assist
 
-DevDNA constructs a **digital twin** of any Python codebase from deterministic static analysis, and uses AI only where it adds value. Unlike naive AI wrappers that hallucinate call graphs, or purely static tools that cannot reason about semantic runtime behavior, DevDNA combines both:
+DevDNA constructs a **digital twin** of any Python or JavaScript/TypeScript codebase from deterministic static analysis, and uses AI only where it adds value. Unlike naive AI wrappers that hallucinate call graphs, or purely static tools that cannot reason about semantic runtime behavior, DevDNA combines both:
 
 * **The Symbolic Engine (AST MultiDiGraph):** Mathematically maps dependencies, call sites, and exception handlers directly from syntax trees with zero hallucinations.
 * **The AI Engine (Gemma 4, served through the Google Gemini API):** Visually ingests architecture diagrams for drift detection, synthesizes arbitrary failure scenarios from natural language, and reconciles empirical test results. The cascading risk score itself is a deterministic heuristic computed from the dependency graph — no AI model is used for this score, and it is not a failure probability.
@@ -111,6 +111,31 @@ DevDNA constructs a **digital twin** of any Python codebase from deterministic s
 
 ---
 
+## 4b. Deterministic Insight Modules
+
+Seven modules extend the core twin with read-only, deterministic analysis. Every response carries its method and limitations; predictions are labelled as predictions and never presented as proof.
+
+| Module | What it does | Endpoint |
+| :--- | :--- | :--- |
+| **AgentGuard** | Security audit of AI-agent configuration files (`.mcp.json`, tool-permission settings, agent instructions, env files, CI workflows, `package.json`): excessive permissions, credential exposure, supply-chain pinning, prompt-injection and data-exfiltration paths — labelled suspected vs verified, secret values never recorded. | `GET /api/projects/{id}/agentguard` · `python -m app.agentguard <path>` |
+| **Change Impact** | Given changed file paths (repo-relative or git-diff form), report affected dependents (all `possible`), tests predicted `may_break` (never `fail`), and files no test can reach. | `POST /api/projects/{id}/impact/changed-files` |
+| **Test-Gap Validation** | Project-wide map of components unreachable from any test, validated against tests actually executed by completed experiments. Gaps are never "validated" — absence of evidence is labelled as such. | `GET /api/projects/{id}/test-gaps` |
+| **Verified Remediation** | Check a proposed patch on a disposable copy of the project: re-run the full analysis and compare findings by fingerprint (`resolved_static` / `still_present` / introduced). The original source is never modified; no tests are executed. | `POST /api/projects/{id}/remediations/verify` |
+| **Reliability Memory** | Durable track record of prediction outcomes per scenario and per claim pattern. Rates below 20 observations are `insufficient_data`, never a fluke percentage; an empty memory says so instead of simulating data. | `GET /api/projects/{id}/reliability` |
+| **PR Intelligence** | One deterministic review package combining impact, per-file test coverage, touching findings and the reliability excerpt — with mechanically derived next steps. A review aid, not a verdict or approval. | `POST /api/projects/{id}/pr-review` |
+| **Production Hardening** | Always-on: fail-closed readiness (`/api/health` answers 503 when the database is unreachable), server-generated `X-Request-ID` + access logs, security headers on every response. | [Operations guide](docs/PRODUCTION_CHECKLIST.md) |
+
+All of these surface in the frontend under **Insights** (`/insights`).
+
+### Honesty rules (apply everywhere)
+
+* **Suspected vs verified:** static analysis claims are labelled as claims; only a controlled experiment turns a prediction into an observation.
+* **Predictions vs observations:** impact entries are `possible` / `may_break`, never "will fail"; experiment comparisons report a confusion matrix, not a verdict.
+* **Evidence + provenance + confidence** on every finding; secret values are redacted before they ever leave the analyzer.
+* **No fabricated metrics:** confidence scores, risk scores and calibration rates all state their sample sizes; thresholds below the floor answer `insufficient_data`.
+
+---
+
 ## 5. Mathematical Foundations & Risk Formula
 
 *Full technical details and proofs are documented in [docs/ALGORITHM.md](docs/ALGORITHM.md).*
@@ -137,6 +162,7 @@ flowchart LR
     subgraph Frontend["React 18 Frontend"]
         UI[Overview & What-If Lab]
         GraphView[React Flow Topology Graph]
+        Insights[Insights: PR Review / Test Gaps / Reliability]
         MultiModal[Multimodal Diagram Inspector]
         Theme[Dark / Bright Theme Engine]
     end
@@ -268,10 +294,10 @@ Open **`http://localhost:5173`** in your browser.
 DevDNA maintains a comprehensive automated test suite across backend algorithms, security boundaries, and UI components:
 
 ```bash
-# Run backend pytest suite (74 tests)
-cd backend && python -m pytest -v
+# Run backend pytest suite (282 tests, 1 skipped)
+cd backend && python -m pytest -q
 
-# Run frontend Vitest suite (21 tests)
+# Run frontend Vitest suite (27 tests)
 cd frontend && npm test -- --run
 
 # Compile frontend production bundle
@@ -326,27 +352,37 @@ DEVDNA/
 ├── docs/                       # Technical specifications & architecture
 │   ├── ARCHITECTURE.md         # Subsystems, sequence diagrams, and data flow
 │   ├── ALGORITHM.md            # Criticality formula, Dual BFS, confusion matrix
-│   └── SECURITY.md             # Threat model, sandboxing, and secret redaction
+│   ├── SECURITY.md             # Threat model, sandboxing, and secret redaction
+│   ├── AGENTGUARD.md           # AI-agent config audit formats, rules, limitations
+│   ├── CHANGE_IMPACT.md        # Changed-files impact: method + honesty rules
+│   ├── TEST_GAPS.md            # Static gap map + experiment validation layers
+│   ├── REMEDIATION.md          # Patch verification on a disposable copy
+│   ├── RELIABILITY.md          # Track-record aggregation of experiment outcomes
+│   ├── PR_REVIEW.md            # Deterministic PR review package
+│   └── PRODUCTION_CHECKLIST.md # Deployment config + runtime hardening + ops
 ├── backend/                    # FastAPI Backend Service
 │   ├── app/
 │   │   ├── cli.py              # Static PR impact report CLI
+│   │   ├── agentguard/         # AI-agent config parsers, rules, permission graph
 │   │   ├── ai/                 # Gemma 4 integration (gemma-4-26b-a4b-it, retry loop)
-│   │   ├── analyzer/           # Python AST parser, route resolver, redaction
-│   │   ├── api/                # REST endpoints (projects, predictions, experiments)
+│   │   ├── analyzer/           # Python AST parser (+ JS/TS via AST engine), redaction
+│   │   ├── api/                # REST endpoints (projects, predictions, experiments, agentguard, pr_review)
 │   │   ├── experiments/        # What-If runner and devdna_faults pytest plugin
 │   │   ├── graph/              # NetworkX MultiDiGraph engine and Dual BFS
 │   │   ├── models/             # SQLAlchemy database models
-│   │   └── services/           # Findings rules, reports, graph serialization
-│   ├── tests/                  # 74 automated pytest unit and integration tests
+│   │   └── services/           # Findings rules, change impact, test gaps, remediation,
+│   │                           #   reliability memory, PR review, calibration, reports
+│   ├── tests/                  # 282 automated pytest unit and integration tests
 │   ├── sample_project/         # ShopLite reference e-commerce repository
 │   └── requirements.txt        # Backend dependencies
 ├── frontend/                   # React 18 + Vite Web Application
 │   ├── src/
 │   │   ├── components/         # AIPanel, NewProjectModal, ImpactView, PredictionVsReality
 │   │   ├── layouts/            # AppLayout with theme toggle and global shortcuts
-│   │   ├── pages/              # Overview, Architecture, What-If Lab, Findings, Reports
+│   │   ├── pages/              # Overview, Architecture, What-If Lab, Findings, Insights, Reports
 │   │   └── index.css           # Tailwind CSS 4 theme tokens & Bright mode overrides
 │   └── package.json            # Frontend dependencies
+├── ast-engine/                 # Standalone JS/TS complexity analyser (port 8001)
 ├── .github/                    # CI workflows and issue templates
 └── CONTRIBUTING.md             # Contributor setup and coding guidelines
 ```
