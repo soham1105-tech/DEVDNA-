@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.analyzer.dispatch import has_analysable_source
 from app.analyzer.ingest import ZipSecurityError, safe_extract_zip, scan_tree
 from app import db as dbmod
 from app.api.deps import get_project, pagination_params
@@ -158,10 +159,12 @@ def _create_zip_project(
         raise HTTPException(400, detail={"code": "unsafe_archive", "message": str(exc)}) from exc
 
     scan = scan_tree(dest)
-    if not any(path.endswith(".py") for path in scan["files"]):
+    if not has_analysable_source(scan["files"]):
         shutil.rmtree(project_dir, ignore_errors=True)
-        raise HTTPException(422, detail={"code": "no_python",
-                                         "message": "No Python source files found. DevDNA currently analyses Python projects."})
+        raise HTTPException(422, detail={
+            "code": "no_analysable_source",
+            "message": "No Python or JavaScript/TypeScript source files found. "
+                       "DevDNA analyses Python and JavaScript/TypeScript projects."})
     stats.pop("sensitive_files", None)
     project = Project(id=pid, name=name[:200], source_type=source_type, source_path=str(dest), trusted=False,
                       **ast_repository,
@@ -240,8 +243,11 @@ def local_project(body: LocalProjectIn, background: BackgroundTasks, db: Session
     if not path.is_dir():
         raise HTTPException(404, detail={"code": "not_found", "message": f"Directory not found: '{body.path}'"})
     scan = scan_tree(path)
-    if not any(f.endswith(".py") for f in scan["files"]):
-        raise HTTPException(422, detail={"code": "no_python", "message": "No Python source files found. DevDNA currently analyses Python projects."})
+    if not has_analysable_source(scan["files"]):
+        raise HTTPException(422, detail={
+            "code": "no_analysable_source",
+            "message": "No Python or JavaScript/TypeScript source files found. "
+                       "DevDNA analyses Python and JavaScript/TypeScript projects."})
     project = Project(name=body.name or path.name, source_type="local", source_path=str(path), trusted=False,
                       **_github_repository_fields(body.github_url, body.github_branch),
                       ingest_stats={"files": scan["file_count"], "languages": scan["languages"]})

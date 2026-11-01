@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import timezone
 
+from pathlib import Path
+
 from app.analyzer.redact import redact_obj
 from app.models import AnalysisRun, Experiment, Finding, Prediction, Project
 from app.services.finding_workflow import active_suppression, finding_fingerprint
@@ -31,9 +33,28 @@ def iso(dt):
     return dt.isoformat()
 
 
+def python_present(p: Project) -> bool:
+    """True when the project's stored language stats include Python.
+
+    Derives from ingest_stats["languages"]; rescans the source directory only
+    when that stat is missing. JavaScript/TypeScript-only projects are
+    analysable but cannot run pytest experiments.
+    """
+    langs = (p.ingest_stats or {}).get("languages")
+    if not langs:
+        try:
+            from app.analyzer.ingest import scan_tree
+
+            langs = scan_tree(Path(p.source_path))["languages"]
+        except OSError:
+            return False
+    return any(str(k).lower() == "python" and v > 0 for k, v in langs.items())
+
+
 def project_out(p: Project, run: AnalysisRun | None = None) -> dict:
     return {
         "id": p.id, "name": p.name, "source_type": p.source_type, "trusted": p.trusted,
+        "analysis_only": not python_present(p),
         "ast_repository": (
             {"owner": p.ast_owner, "repo": p.ast_repo, "branch": p.ast_branch}
             if p.ast_owner and p.ast_repo and p.ast_branch else None

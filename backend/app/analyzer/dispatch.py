@@ -54,6 +54,12 @@ def _is_js_file(rel: str) -> bool:
     name = rel.split("/")[-1]
     return name.endswith(JS_SUFFIXES) and not name.endswith(".d.ts") and ".min." not in name
 
+def has_analysable_source(files: list[str]) -> bool:
+    """True when at least one file is Python or a JS/TS source file the
+    analysers can process. Single shared import gate for projects.py."""
+    return any(f.endswith(".py") or _is_js_file(f) for f in files)
+
+
 
 def _merge_results(py: dict, js: dict) -> dict:
     """Merge a Python and a JS/TS analysis into one result.

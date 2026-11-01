@@ -1,4 +1,5 @@
 import io
+import json
 import zipfile
 
 import pytest
@@ -274,7 +275,8 @@ def test_upload_rejections(client):
     r = client.post("/api/projects/upload", files={"file": ("x.zip", _zip({"../../evil.py": "x"}), "application/zip")})
     assert r.status_code == 400 and r.json()["error"]["code"] == "unsafe_archive"
     r = client.post("/api/projects/upload", files={"file": ("x.zip", _zip({"readme.md": "x"}), "application/zip")})
-    assert r.status_code == 422 and r.json()["error"]["code"] == "no_python"
+    assert r.status_code == 422 and r.json()["error"]["code"] == "no_analysable_source"
+    assert "Python or JavaScript/TypeScript" in r.json()["error"]["message"]
     r = client.post(
         "/api/projects/upload",
         files={"file": ("x.zip", _zip({"app.py": "print('ok')"}), "application/zip")},
@@ -678,3 +680,114 @@ def test_large_trace_comparison_output_is_capped(client, sample_project, tmp_pat
     assert len(comparison["observed"]) <= 500
     assert len(comparison["unobserved"]) <= 500
     assert len(comparison["runtime_only_edges"]) <= 500
+
+# --- JS/TS import gate -------------------------------------------------------
+
+def _express_zip():
+    """A minimal JS-only Express app: routes, no Python."""
+    return _zip({
+        "package.json": json.dumps({
+            "name": "mini-express", "version": "1.0.0",
+            "dependencies": {"express": "^4.19.0"},
+        }),
+        "app.js": (
+            "import express from 'express';\n"
+            "const app = express();\n"
+            "app.get('/ping', (req, res) => res.json({ ok: true }));\n"
+            "app.post('/orders', (req, res) => res.json({ ok: true }));\n"
+            "export default app;\n"
+        ),
+    })
+
+
+def test_js_only_import_succeeds_and_produces_routes(client):
+    """A JS-only Express app imports through the upload path and yields
+    JavaScript components and routes (previously blocked with no_python)."""
+    r = client.post("/api/projects/upload",
+                    files={"file": ("mini-express.zip", _express_zip(), "application/zip")})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    project = body["project"]
+    assert project["analysis_only"] is True  # no Python -> experiments cannot verify
+    assert project["ingest_stats"]["languages"].get("JavaScript", 0) >= 1
+
+    detail = client.get(f"/api/projects/{project['id']}").json()
+    assert detail["latest_run"]["status"] == "completed"
+    comps = client.get(f"/api/projects/{project['id']}/architecture").json()["components"]
+    ids = {c["id"] for c in comps}
+    assert "route:GET /ping" in ids and "route:POST /orders" in ids
+    assert "app:app.app" in ids  # the express app component
+
+
+def test_repo_without_analysable_source_is_422(client):
+    """A repo with only .md/.json files has nothing to analyse."""
+    r = client.post("/api/projects/upload",
+                    files={"file": ("docs.zip", _zip({"readme.md": "# hi", "pkg.json": "{}"}), "application/zip")})
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "no_analysable_source"
+    assert "Python or JavaScript/TypeScript" in r.json()["error"]["message"]
+
+
+def test_mixed_python_js_import_works_and_experiments_allowed(client):
+    """A mixed Python + JS repo imports, and experiments remain available
+    (Python is present, so pytest can verify predictions)."""
+    from app import db as dbmod
+    from app.models import Experiment
+
+    z = _zip({
+        "app.py": "import sqlite3\nfrom fastapi import FastAPI\napp = FastAPI()\n"
+                  "@app.get('/py')\ndef py():\n    conn = sqlite3.connect('t.db')\n    return {'ok': True}\n",
+        "web.js": "export const x = 1;\n",
+    })
+    r = client.post("/api/projects/upload", files={"file": ("mixed.zip", z, "application/zip")})
+    assert r.status_code == 201
+    project = r.json()["project"]
+    assert project["analysis_only"] is False
+    langs = project["ingest_stats"]["languages"]
+    assert langs.get("Python", 0) >= 1 and langs.get("JavaScript", 0) >= 1
+
+    pred = client.post(f"/api/projects/{project['id']}/predictions",
+                       json={"scenario": "db_unavailable", "target_id": "database:sqlite"}).json()
+    r = client.post(f"/api/predictions/{pred['id']}/experiments", json={"approved": True})
+    assert r.status_code == 202  # allowed: not the analysis-only 422
+    db = dbmod.SessionLocal()
+    try:
+        queued = db.query(Experiment).filter(Experiment.prediction_id == pred["id"]).count()
+        assert queued == 1
+    finally:
+        db.close()
+
+
+def test_js_only_project_blocks_experiment_creation(client):
+    """Creating an experiment for a JS-only project answers 422 with the
+    analysis-only explanation and queues nothing."""
+    from app import db as dbmod
+    from app.models import Experiment
+
+    r = client.post("/api/projects/upload",
+                    files={"file": ("mini-express.zip", _express_zip(), "application/zip")})
+    assert r.status_code == 201
+    project = r.json()["project"]
+    assert project["analysis_only"] is True
+
+    comps = client.get(f"/api/projects/{project['id']}/architecture").json()["components"]
+    target = next(c["id"] for c in comps if c["type"] in ("function", "app", "module"))
+    pred = client.post(f"/api/projects/{project['id']}/predictions",
+                       json={"scenario": "custom_redis_fault", "target_id": target,
+                             "custom_spec": {"label": "Custom JS failure",
+                                             "fault": "Arbitrary failure injected for the target.",
+                                             "exceptions": ["Error"], "target_types": []}})
+    assert pred.status_code == 201, pred.text
+    pred_id = pred.json()["id"]
+
+    r = client.post(f"/api/predictions/{pred_id}/experiments", json={"approved": True})
+    assert r.status_code == 422
+    body = r.json()["error"]
+    assert body["code"] == "analysis_only"
+    assert "Experiments require a Python pytest suite" in body["message"]
+
+    db = dbmod.SessionLocal()
+    try:
+        assert db.query(Experiment).filter(Experiment.prediction_id == pred_id).count() == 0
+    finally:
+        db.close()

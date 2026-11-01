@@ -67,7 +67,7 @@ export default function NewProjectModal({ open, onClose, initialTab = 'sample' }
       open={open}
       onClose={flow.busy ? () => {} : onClose}
       title={running ? 'Analysing repository' : 'New project'}
-      subtitle={running ? 'Real static analysis in progress' : 'DevDNA analyses Python source code statically. Nothing is executed during analysis.'}
+      subtitle={running ? 'Real static analysis in progress' : 'DevDNA analyses Python and JavaScript/TypeScript source code statically. Nothing is executed during analysis.'}
       footer={
         !running || flow.error ? (
           <>

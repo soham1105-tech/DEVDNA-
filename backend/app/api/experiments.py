@@ -21,7 +21,7 @@ from app.models import Experiment, Prediction, Project
 from app.schemas import ExperimentIn, PredictionIn
 from app.services.analysis import load_graph
 from app.services.calibration import calibrate_impact, record_experiment_outcomes
-from app.services.serialize import experiment_out, prediction_out
+from app.services.serialize import experiment_out, prediction_out, python_present
 
 router = APIRouter(prefix="/api", tags=["predictions & experiments"])
 log = logging.getLogger("devdna.experiments")
@@ -188,6 +188,13 @@ def start_experiment(prediction_id: str, body: ExperimentIn, background: Backgro
     if not body.approved:
         raise HTTPException(400, detail={"code": "approval_required",
                                          "message": "Experiments only run after explicit approval (approved: true)."})
+    project = db.get(Project, pred.project_id)
+    if not python_present(project):
+        raise HTTPException(422, detail={
+            "code": "analysis_only",
+            "message": "Experiments require a Python pytest suite. This project is JavaScript/TypeScript-only: "
+                       "analysis and predictions are available, but they cannot be verified by a test run.",
+        })
     queued = db.scalar(select(func.count()).select_from(Experiment)
                        .where(Experiment.status.in_(["queued", "running"])))
     if queued >= settings.max_queued_experiments:

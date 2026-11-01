@@ -90,6 +90,9 @@ function Dashboard({ project }) {
         subtitle={`${project.source_type === 'sample' ? 'Bundled demo' : project.source_type === 'upload' ? 'Uploaded ZIP' : project.source_type === 'github' ? 'GitHub repository' : 'Local folder'} · analysed ${timeAgo(project.latest_run?.finished_at)} · ${a.frameworks.join(', ') || 'no frameworks detected'}`}
         actions={
           <>
+            {project.analysis_only && (
+              <Badge className="bg-warning-bg text-warning-ink">Analysis only</Badge>
+            )}
             <Badge className={project.trusted ? 'bg-positive-bg text-positive-ink' : 'bg-warning-bg text-warning-ink'}>
               {project.trusted ? 'Trusted sample' : 'Untrusted code'}
             </Badge>
@@ -99,6 +102,15 @@ function Dashboard({ project }) {
           </>
         }
       />
+      {project.analysis_only && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-card border border-warning/25 bg-warning-bg px-4 py-3 text-sm text-muted">
+          <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <span>
+            <span className="font-medium text-ink">Analysis only.</span> Analysis and predictions are available, but
+            experiments cannot verify them for JavaScript/TypeScript-only projects (experiments run a Python pytest suite).
+          </span>
+        </div>
+      )}
 
       <motion.div variants={stagger} initial="initial" animate="animate" className="space-y-4">
         <Card className="p-3">
