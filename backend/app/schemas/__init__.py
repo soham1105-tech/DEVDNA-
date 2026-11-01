@@ -27,6 +27,18 @@ class PredictionIn(BaseModel):
     custom_spec: dict | None = Field(default=None, description="Optional custom dynamic failure scenario specification.")
 
 
+class ChangedFilesIn(BaseModel):
+    files: list[str] = Field(min_length=1, max_length=200,
+                             description="Changed file paths (repo-relative, or git diff a/ b/ form).")
+
+
+class RemediationIn(BaseModel):
+    files: dict[str, str] = Field(min_length=1, max_length=20,
+                                  description="Proposed full replacement contents, keyed by repo-relative path.")
+    finding_ids: list[str] = Field(default_factory=list, max_length=200,
+                                   description="Findings to check; empty means all findings of the latest run.")
+
+
 class AIRequest(BaseModel):
     consent: bool = Field(default=False, description="Must be true to send the evidence package to Gemma.")
     preview: bool = Field(default=False, description="Return the exact evidence package without calling the model.")
