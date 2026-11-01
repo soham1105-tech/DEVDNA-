@@ -241,7 +241,10 @@ def _seeds(g: nx.MultiDiGraph, scenario: str, target: str) -> list[str]:
             dd = data.get("data", {})
             if data["type"] == "function" and dd.get("module") == module and dd.get("cls") == cls:
                 short = data["name"].split(".")[-1]
-                if short in launchers or short.startswith("_"):
+                # seed every method of the worker class except the framework
+                # launchers — private helpers like _run/_process run the same
+                # faulted code paths and must be predicted too
+                if short in launchers:
                     continue
                 seeds.append(n)
     return seeds
@@ -294,6 +297,30 @@ def _path(parent, node) -> list[str]:
     return out
 
 
+def covering_tests_all_mocked(tests: list[dict], executed_keys: set | None = None) -> bool:
+    """The engine's mock rule: every covering test (a test with a path to the
+    fault, optionally restricted to tests that actually executed) is mocked.
+    Shared with the runner's compare() so both use one definition."""
+    covering = [t for t in tests
+                if t.get("path") and (executed_keys is None or t.get("junit_key") in executed_keys)]
+    return bool(covering) and all(t.get("mocked") for t in covering)
+
+
+def _node_import_path(node_id: str) -> str:
+    """`module:app.db` / `func:app.db.get` / `class:app.db.Pool` -> the dotted
+    import path they resolve to."""
+    return node_id.split(":", 1)[1] if ":" in node_id else node_id
+
+
+def _mock_targets_node(mock: str, node_id: str) -> bool:
+    """A mock target (what a test patches) matches a path node only when it
+    equals or is a dotted suffix of the node's resolved id/import path —
+    never as a bare substring (mocking `orders` must not match
+    `func:...services.orders.create_order`)."""
+    key = _node_import_path(node_id)
+    return mock == key or key.endswith("." + mock)
+
+
 def compute_impact(g: nx.MultiDiGraph, scenario: str, target: str, custom_spec: dict | None = None) -> dict:
     if target not in g:
         raise ValueError(f"Component '{target}' is not in the analysed graph")
@@ -313,28 +340,37 @@ def compute_impact(g: nx.MultiDiGraph, scenario: str, target: str, custom_spec: 
 
     seeds = _seeds(g, scenario, target)
     possible_parent, possible_dist = _bfs(g, seeds, None)
-    raised = set()
-    for n in possible_parent:
-        raised |= set(g.nodes[n].get("data", {}).get("raises", []))
-    relevant = set(spec["exceptions"]) | GENERIC_EXCEPTIONS | raised
-    definite_parent, definite_dist = _bfs(g, seeds, relevant)
+    # The relevant-exception set is scoped to the fault: the injected fault's
+    # own exception types, the target's declared raises, and — per affected
+    # node below — only exceptions raised on that node's own path. An
+    # unrelated downstream node raising ValueError must not demote a definite
+    # prediction on a path it is not part of.
+    base_relevant = set(spec["exceptions"]) | GENERIC_EXCEPTIONS
+    for s in seeds:
+        base_relevant |= set(g.nodes[s].get("data", {}).get("raises", []))
 
     affected, tests = [], []
     for n, data in g.nodes(data=True):
         if n not in possible_parent or n in seeds:
             continue
-        definite = n in definite_parent
-        path = _path(definite_parent if definite else possible_parent, n)
+        path = _path(possible_parent, n)
+        path_raised = set(base_relevant)
+        for node_id in path:
+            path_raised |= set(g.nodes[node_id].get("data", {}).get("raises", []))
+        definite = True
         guard = None
-        if not definite:
-            for a, b in zip(path, path[1:]):
-                for _, _, edata in g.edges(a, data=True):
-                    if edata["target"] == b and edata["type"] in PROPAGATING:
-                        guard = guard or _edge_guard(edata, relevant)
+        for a, b in zip(path, path[1:]):
+            edge_guard = None
+            for _, _, edata in g.edges(a, data=True):
+                if edata["target"] == b and edata["type"] in PROPAGATING:
+                    edge_guard = edge_guard or _edge_guard(edata, path_raised)
+            if edge_guard:
+                definite = False
+                guard = guard or edge_guard
         item = {
             "id": n, "type": data["type"], "name": data["name"], "file": data.get("file"), "line": data.get("line"),
             "certainty": "definite" if definite else "possible",
-            "distance": (definite_dist if definite else possible_dist)[n],
+            "distance": possible_dist[n],
             "path": path, "handled_at": guard,
         }
         if data["type"] == "test":
@@ -347,8 +383,10 @@ def compute_impact(g: nx.MultiDiGraph, scenario: str, target: str, custom_spec: 
             tests.append({"id": n, "type": "test", "name": data["name"], "file": data.get("file"), "line": data.get("line"),
                           "nodeid": data["data"].get("nodeid"), "junit_key": data["data"].get("junit_key"),
                           "prediction": "pass", "certainty": "unaffected", "path": [], "distance": None, "handled_at": None})
+    relevant = base_relevant
     # Mock detection on covering tests
     covering_tests = [t for t in tests if t["id"] in possible_parent and t["id"] not in seeds]
+    mocked_edges: set[tuple[str, str]] = set()
     for t in covering_tests:
         node_data = g.nodes[t["id"]].get("data", {})
         mocks = node_data.get("mocks", [])
@@ -362,18 +400,9 @@ def compute_impact(g: nx.MultiDiGraph, scenario: str, target: str, custom_spec: 
         elif scenario == "external_api_unavailable" and "external_api" in mock_types:
             is_mocked = True
 
-        if not is_mocked and len(t["path"]) > 1:
-            nxt = t["path"][1]
-            if g.has_edge(t["id"], nxt):
-                for k, edata in g[t["id"]][nxt].items():
-                    if edata.get("mocked"):
-                        is_mocked = True
-                        break
-
         if not is_mocked and mocks:
             for m in mocks:
-                m_lower = m.lower()
-                if any(p.lower() in m_lower or m_lower in p.lower() for p in t["path"]):
+                if any(_mock_targets_node(str(m).lower(), p) for p in t["path"]):
                     is_mocked = True
                     break
 
@@ -382,10 +411,10 @@ def compute_impact(g: nx.MultiDiGraph, scenario: str, target: str, custom_spec: 
             if len(t["path"]) > 1:
                 nxt = t["path"][1]
                 if g.has_edge(t["id"], nxt):
-                    for k, edata in g[t["id"]][nxt].items():
-                        edata["mocked"] = True
+                    # recorded in the result instead of mutating the caller's graph
+                    mocked_edges.add((t["id"], nxt))
 
-    all_covering_mocked = len(covering_tests) > 0 and all(t.get("mocked") for t in covering_tests)
+    all_covering_mocked = covering_tests_all_mocked(tests)
     overall_prediction = None
     if all_covering_mocked:
         overall_prediction = "uncertain — covering tests mock the dependency"
@@ -405,6 +434,7 @@ def compute_impact(g: nx.MultiDiGraph, scenario: str, target: str, custom_spec: 
     tests.sort(key=lambda t: (pred_order.get(t["prediction"], 1), t["id"]))
     routes_total = sum(1 for _, d in g.nodes(data=True) if d["type"] == "route")
     affected_routes = [a for a in affected if a["type"] == "route"]
+    all_covering_mocked = covering_tests_all_mocked(tests)
     tnode = g.nodes[target]
     custom_fault = {
         "kind": "dynamic_fault",
@@ -425,6 +455,7 @@ def compute_impact(g: nx.MultiDiGraph, scenario: str, target: str, custom_spec: 
         "target": {"id": target, "type": ttype, "name": tnode["name"], "data": tnode.get("data", {})},
         "seeds": seeds,
         "relevant_exceptions": sorted(relevant),
+        "mocked_edges": sorted(f"{src}|{dst}" for src, dst in mocked_edges),
         "affected": affected,
         "tests": tests,
         "prediction": overall_prediction,
@@ -443,8 +474,8 @@ def compute_impact(g: nx.MultiDiGraph, scenario: str, target: str, custom_spec: 
         "method": (
             "Reverse breadth-first search over propagating edges (calls, handled_by, served_by, runs_on_startup, "
             "uses_database, calls_http, reads_env, exercises). 'definite' = reachable without crossing a call site "
-            "protected by an except-handler that catches a relevant exception and does not re-raise; 'possible' = "
-            "reachable only through such handled call sites."
+            "protected by an except-handler that catches an exception relevant to the fault or raised along the same "
+            "path, and that does not re-raise; 'possible' = reachable only through such handled call sites."
         ),
         "limitations": [
             "Static analysis only: dynamic dispatch, reflection, monkeypatching and runtime configuration are not modelled.",

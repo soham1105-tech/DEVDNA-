@@ -27,6 +27,7 @@ from pathlib import Path
 
 from app.analyzer.redact import redact
 from app.services.depspec import DependencySpecError, parse_requirements_file, parse_requirements_text
+from app.graph.engine import covering_tests_all_mocked
 from app.config import settings
 
 HARNESS_DIR = Path(__file__).resolve().parent / "harness"
@@ -392,13 +393,12 @@ def compare(impact: dict, observation: dict) -> dict:
         "fault_triggers": fault["fault_state"].get("triggers", 0),
     }
     triggers = metrics["fault_triggers"]
+    # mock rule shared with the engine (covering_tests_all_mocked), restricted
+    # to covering tests that actually executed in the faulted run
     all_covering_mocked = (
         impact.get("prediction") == "uncertain — covering tests mock the dependency"
         or impact.get("summary", {}).get("prediction") == "uncertain — covering tests mock the dependency"
-        or (
-            any(t.get("mocked") for t in impact.get("tests", []))
-            and all(t.get("mocked") for t in impact.get("tests", []) if t.get("path") and t.get("junit_key") in fault["results"])
-        )
+        or covering_tests_all_mocked(impact.get("tests", []), executed_keys=set(fault["results"]))
     )
     if all_covering_mocked:
         status, reason = "uncertain — covering tests mock the dependency", "All covering tests mock the dependency, so the prediction is uncertain."
