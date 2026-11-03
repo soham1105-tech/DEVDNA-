@@ -11,6 +11,8 @@
 
 **Predict failure blast radius in Python & JavaScript/TypeScript codebases, prove or disprove the prediction by injecting faults into real pytest test suites, audit AI-agent configurations for security risks, and turn every experiment into a durable reliability memory.**
 
+Built by Soham Ray and Subha Parida — original engine by Subha Parida, fork development led by Soham Ray. See [AUTHORS](AUTHORS.md).
+
 [Explore Architecture](docs/ARCHITECTURE.md) • [Algorithm Reference](docs/ALGORITHM.md) • [Security & Isolation](docs/SECURITY.md) • [AgentGuard](docs/AGENTGUARD.md) • [Change Impact](docs/CHANGE_IMPACT.md) • [Test Gaps](docs/TEST_GAPS.md) • [Remediation](docs/REMEDIATION.md) • [Reliability](docs/RELIABILITY.md) • [PR Review](docs/PR_REVIEW.md) • [Production Checklist](docs/PRODUCTION_CHECKLIST.md) • [Contributing](CONTRIBUTING.md)
 
 </div>
