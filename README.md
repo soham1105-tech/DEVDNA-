@@ -330,6 +330,49 @@ Repeat `--changed-file` for multiple paths, or use `--changed-files-file` with o
 
 The [DevDNA PR Impact workflow](.github/workflows/pr-impact.yml) runs for pull requests and creates or updates one report comment. It analyzes the PR source statically and runs no project tests or experiments. Route coverage is heuristic and can miss dynamic or indirect test coverage.
 
+### Use the DevDNA GitHub Action from another repository
+
+[`action.yml`](action.yml) packages the same static PR check as a composite
+action. It analyzes `$GITHUB_WORKSPACE`, writes Markdown and JSON reports to
+`$RUNNER_TEMP`, updates one marker-tagged PR comment, and fails only when
+`fail-on-uncovered-route` is true and uncovered routes exist. It never executes
+the analyzed repository's code.
+
+The three-line install, inside a job that grants `contents: read` and
+`pull-requests: write`:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: soham1105-tech/DEVDNA-@main
+  with: { fail-on-uncovered-route: true, comment-on-pr: true }
+```
+
+A complete fork-safe example (the `pull_request` trigger, not
+`pull_request_target`) is in
+[`docs/examples/devdna-action.yml`](docs/examples/devdna-action.yml). The
+default `github.token` is enough to read changed files; on a fork PR GitHub may
+downgrade it to read-only, so the Action warns instead of failing if it cannot
+post the comment.
+
+The PR comment is one Markdown report tagged with `<!-- devdna-pr-impact -->`
+and updated in place on later pushes:
+
+```markdown
+<!-- devdna-pr-impact -->
+## DevDNA PR impact report
+
+_Static prediction only; no experiments were run._
+
+### `shoplite/services/pricing.py`
+**Impacted routes:**
+- `POST /api/orders` (definite) — **covered by a predicted-failing test**
+...
+```
+
+**Honesty rule:** every route and test outcome above is **PREDICTED** until a
+controlled fault-injection run verifies it. A passing PR check is a static
+prediction, not proof that the change is safe.
+
 ---
 
 ## 11. Global Keyboard Shortcuts
