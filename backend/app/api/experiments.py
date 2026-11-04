@@ -15,7 +15,7 @@ from app import db as dbmod
 from app.api.deps import get_project, pagination_params, require_run
 from app.config import settings
 from app.db import get_db
-from app.experiments.runner import choose_mode, compare, execute, fault_spec
+from app.experiments.runner import RunnerBlocked, choose_mode, choose_test_runner, compare, execute, fault_spec
 from app.graph.engine import compute_impact
 from app.models import Experiment, Finding, Prediction, Project
 from app.schemas import ChangedFilesIn, ExperimentIn, PredictionIn, RemediationIn
@@ -215,10 +215,24 @@ def run_experiment(experiment_id: str) -> None:
             exp.finished_at = datetime.now(timezone.utc)
             db.commit()
             return
+        runner, runner_reason = choose_test_runner(Path(project.source_path), python_present=python_present(project))
+        if runner == "blocked":
+            exp.status, exp.error = "blocked", runner_reason
+            exp.finished_at = datetime.now(timezone.utc)
+            db.commit()
+            return
+        if runner == "jest" and mode != "local_harness":
+            exp.status, exp.error = "blocked", (
+                "JavaScript experiments for untrusted projects require a Docker JavaScript sandbox, "
+                "which is not available in this build. No code was executed."
+            )
+            exp.finished_at = datetime.now(timezone.utc)
+            db.commit()
+            return
         with _exec_lock:
             exp.status, exp.started_at = "running", datetime.now(timezone.utc)
             db.commit()
-            observation = execute(Path(project.source_path), fault_spec(pred.impact), mode)
+            observation = execute(Path(project.source_path), fault_spec(pred.impact), mode, runner=runner)
         comparison = compare(pred.impact, observation)
         exp.observation = observation
         exp.comparison = comparison
@@ -226,6 +240,13 @@ def run_experiment(experiment_id: str) -> None:
         exp.finished_at = datetime.now(timezone.utc)
         record_experiment_outcomes(db, exp, pred, comparison)
         db.commit()
+    except RunnerBlocked as exc:
+        db.rollback()
+        exp = db.get(Experiment, experiment_id)
+        if exp:
+            exp.status, exp.error = "blocked", str(exc)
+            exp.finished_at = datetime.now(timezone.utc)
+            db.commit()
     except Exception as exc:
         log.exception("experiment failed")
         db.rollback()
@@ -246,13 +267,6 @@ def start_experiment(prediction_id: str, body: ExperimentIn, background: Backgro
     if not body.approved:
         raise HTTPException(400, detail={"code": "approval_required",
                                          "message": "Experiments only run after explicit approval (approved: true)."})
-    project = db.get(Project, pred.project_id)
-    if not python_present(project):
-        raise HTTPException(422, detail={
-            "code": "analysis_only",
-            "message": "Experiments require a Python pytest suite. This project is JavaScript/TypeScript-only: "
-                       "analysis and predictions are available, but they cannot be verified by a test run.",
-        })
     queued = db.scalar(select(func.count()).select_from(Experiment)
                        .where(Experiment.status.in_(["queued", "running"])))
     if queued >= settings.max_queued_experiments:
