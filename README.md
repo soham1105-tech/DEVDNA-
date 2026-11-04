@@ -9,7 +9,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4.1-38bdf8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Google Gemma](https://img.shields.io/badge/Model-Gemma_4_26B-8b5cf6?logo=google&logoColor=white)](https://ai.google.dev/gemma)
 
-**Predict failure blast radius in Python & JavaScript/TypeScript codebases, prove or disprove the prediction by injecting faults into real pytest test suites, audit AI-agent configurations for security risks, and turn every experiment into a durable reliability memory.**
+**Predict failure blast radius in Python & JavaScript/TypeScript codebases, prove or disprove the prediction by injecting faults into real pytest and Jest test suites, audit AI-agent configurations for security risks, and turn every experiment into a durable reliability memory.**
 
 Built by Soham Ray and Subha Parida — original engine by Subha Parida, fork development led by Soham Ray. See [AUTHORS](AUTHORS.md).
 
@@ -52,8 +52,8 @@ DevDNA constructs a **digital twin** of any Python or JavaScript/TypeScript code
 │   GEMMA 4 COGNITIVE ENGINE    │ Multimodal Diagram Audit • Arbitrary Chaos Synthesis   │
 │                               │ Neural Risk Scoring • Empirical Post-Mortem Analysis   │
 ├───────────────────────────────┼────────────────────────────────────────────────────────┤
-│   EMPIRICAL PYTEST SANDBOX    │ Isolated Subprocess/Docker • Fault Injection Plugin    │
-│                               │ JUnit XML Confusion Matrix (TP, FP, TN, FN)           │
+│   EMPIRICAL TEST SANDBOX      │ Isolated Subprocess/Docker • Fault Injection Plugin    │
+│                               │ pytest/Jest Confusion Matrix (TP, FP, TN, FN)          │
 └───────────────────────────────┴────────────────────────────────────────────────────────┘
 ```
 
@@ -107,8 +107,8 @@ DevDNA constructs a **digital twin** of any Python or JavaScript/TypeScript code
    * Combines dual reverse graph reachability bounds with a deterministic heuristic risk score (0-100; heuristic score, not a failure probability — no AI model is used for this score), with Gemma 4 contributing semantic failure mechanisms and unverified route coverage gap analysis.
    * Differentiates **Definite** paths from **Possible** (conditionally handled) paths.
 4. **Empirical What-If Lab (Controlled Fault Injection):**
-   * Executes the repository's real `pytest` suite twice: baseline healthy run, then faulted run using the `devdna_faults` pytest plugin.
-   * Compares predictions against observed JUnit XML outcomes to compute True Positives, False Positives, True Negatives, and False Negatives with AI discrepancy attribution.
+   * Executes the repository's real test suite twice — `pytest` for Python projects and Jest for JavaScript projects — with a baseline healthy run, then a faulted run (the `devdna_faults` pytest plugin for Python; a generated Jest setup for JavaScript).
+   * Compares predictions against observed test outcomes (pytest JUnit XML or Jest JSON) to compute True Positives, False Positives, True Negatives, and False Negatives with AI discrepancy attribution.
 5. **Static AST Ingestion (Zero Code Execution During Ingestion):**
    * Uses Python's native `ast` module to scan functions, routes, database sessions, environment variable reads, and outbound HTTP clients.
    * Every discovered edge carries source file, line number, a redacted code snippet, and evidence classification (`confirmed` vs `inferred`).
@@ -206,7 +206,7 @@ flowchart LR
 | **Cognitive AI Core** | Google Gemma 4 26B (`gemma-4-26b-a4b-it`), Google Gen AI SDK | Multimodal visual architecture audits, dynamic chaos scenario synthesis, calibrated risk evaluation |
 | **Backend API** | Python 3.11+, FastAPI, Uvicorn, Pydantic v2, SQLAlchemy, SQLite | High-performance async REST service, analysis persistence, schema validation |
 | **Static Analysis** | Python native `ast`, NetworkX | AST visitor traversal, call-site resolution, directed dependency multi-graph |
-| **Testing & Faults** | `pytest`, custom `devdna_faults` plugin, JUnit XML parser | Baseline vs. faulted test execution, socket/db/env/dynamic fault interception |
+| **Testing & Faults** | `pytest`, Jest, custom `devdna_faults` plugin, JUnit XML and Jest JSON parsers | Baseline vs. faulted test execution for Python and JavaScript, socket/db/env/dynamic fault interception |
 | **Frontend Web** | React 18, Vite, Tailwind CSS 4, Framer Motion, `@xyflow/react` | Interactive graph visualization, multimodal audit drawer, dynamic lab, dual theming |
 | **Security & Sandbox** | Multi-pattern regex redaction, path traversal guards, Docker | Strict execution isolation, API key sanitization, environment scrubbing |
 
@@ -265,6 +265,24 @@ Dependencies: `backend/requirements.txt` lists the direct dependencies; `backend
 
 Optional hardening (off by default): set `DEVDNA_API_TOKEN` in `backend/.env` to require an `X-DevDNA-Token` header on every `/api` call except `/api/health` (401 `unauthorized` otherwise), and `DEVDNA_RATE_LIMIT_PER_MINUTE` (default 120) for the per-IP request budget (429 `rate_limited`). When the token is set, paste it once in the frontend under Settings → "API access token"; it is stored for the current tab only. Without a token the server logs a startup warning that it is unauthenticated and localhost-only.
 
+### MCP server (optional)
+
+DevDNA includes a stdlib-only stdio MCP server that exposes `devdna_blast_radius` (static blast-radius prediction for a file) and `devdna_repo_summary` (component, edge, and language counts); its blast-radius results are PREDICTED, never verified.
+
+Run it from the repository root with this MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "devdna": {
+      "command": "python",
+      "args": ["-m", "app.mcp_server"],
+      "cwd": "backend"
+    }
+  }
+}
+```
+
 ### 2. Frontend Setup
 For AST complexity scores, start the AST Engine in a separate terminal. The DevDNA API already uses port `8000`, so run the AST Engine on `8001` and point the frontend to it:
 
@@ -302,7 +320,7 @@ Open **`http://localhost:5173`** in your browser.
 DevDNA maintains a comprehensive automated test suite across backend algorithms, security boundaries, and UI components:
 
 ```bash
-# Run backend pytest suite (282 tests, 1 skipped)
+# Run backend pytest suite (298 passed, 1 skipped)
 cd backend && python -m pytest -q
 
 # Run frontend Vitest suite (27 tests)
@@ -388,10 +406,12 @@ prediction, not proof that the change is safe.
 
 ## 12. Security & Privacy Design
 
-* **Zero Arbitrary Execution:** DevDNA accepts no user-supplied shell commands; all tests execute through a fixed `python -m pytest` command.
-* **Scrubbed Environment:** The test harness strips all host environment variables, tokens, and server secrets.
+* **Zero Arbitrary Execution:** DevDNA accepts no user-supplied shell commands; tests run through fixed commands only — `python -m pytest` for Python and `npx jest --ci --json` for JavaScript.
+* **JavaScript Sandbox Boundary:** Untrusted JavaScript projects are blocked because there is no Docker JavaScript sandbox yet, so no untrusted JavaScript code is executed on the host.
+* **No Runner Guessing:** Vitest and unrecognised JavaScript test runners are blocked, never guessed.
+* **Scrubbed Environment:** The test harness passes only the OS variables needed to launch the runner, and strips host API keys, tokens, and server secrets.
 * **Secret Redaction:** Code snippets and stack traces pass through an automated regex redaction engine (`redact.py`) before leaving the backend.
-* **Docker Hardening:** Untrusted uploaded code requires Docker (`--network none`, `--read-only`, `--cap-drop ALL`, `no-new-privileges`).
+* **Docker Hardening:** Untrusted Python projects run only in the Docker sandbox (`--network none`, `--read-only`, `--cap-drop ALL`, `no-new-privileges`).
 
 ---
 
@@ -411,19 +431,21 @@ DEVDNA/
 │   ├── RELIABILITY.md          # Track-record aggregation of experiment outcomes
 │   ├── PR_REVIEW.md            # Deterministic PR review package
 │   └── PRODUCTION_CHECKLIST.md # Deployment config + runtime hardening + ops
+├── action.yml                  # Public composite Action for PR impact checks
 ├── backend/                    # FastAPI Backend Service
 │   ├── app/
 │   │   ├── cli.py              # Static PR impact report CLI
+│   │   ├── mcp_server.py       # Stdlib stdio MCP server (blast radius, repo summary)
 │   │   ├── agentguard/         # AI-agent config parsers, rules, permission graph
 │   │   ├── ai/                 # Gemma 4 integration (gemma-4-26b-a4b-it, retry loop)
 │   │   ├── analyzer/           # Python AST parser (+ JS/TS via AST engine), redaction
 │   │   ├── api/                # REST endpoints (projects, predictions, experiments, agentguard, pr_review)
-│   │   ├── experiments/        # What-If runner and devdna_faults pytest plugin
+│   │   ├── experiments/        # What-If runner (pytest + Jest) and devdna_faults plugin
 │   │   ├── graph/              # NetworkX MultiDiGraph engine and Dual BFS
 │   │   ├── models/             # SQLAlchemy database models
 │   │   └── services/           # Findings rules, change impact, test gaps, remediation,
 │   │                           #   reliability memory, PR review, calibration, reports
-│   ├── tests/                  # 282 automated pytest unit and integration tests
+│   ├── tests/                  # 298 automated pytest unit and integration tests
 │   ├── sample_project/         # ShopLite reference e-commerce repository
 │   └── requirements.txt        # Backend dependencies
 ├── frontend/                   # React 18 + Vite Web Application
