@@ -1,0 +1,161 @@
+name: DevDNA PR Impact
+description: >-
+  Predict the blast radius of a pull request with static analysis. Produces
+  Markdown and JSON reports, comments on the PR, and optionally fails when an
+  impacted route has no statically mapped predicted-failing test. No project
+  code is executed.
+author: Soham Ray
+
+branding:
+  icon: activity
+  color: purple
+
+inputs:
+  fail-on-uncovered-route:
+    description: Fail the job when an impacted route has no statically mapped predicted-failing test.
+    required: false
+    default: "true"
+  comment-on-pr:
+    description: Create or update one DevDNA PR comment with the Markdown report.
+    required: false
+    default: "true"
+  github-token:
+    description: Token used to read the PR's changed files and create or update the PR comment.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  report-markdown-path:
+    description: Absolute path to the generated Markdown report.
+    value: ${{ steps.report.outputs.report_markdown_path }}
+  report-json-path:
+    description: Absolute path to the generated JSON report.
+    value: ${{ steps.report.outputs.report_json_path }}
+  uncovered-routes:
+    description: Number of impacted routes without a statically mapped predicted-failing test.
+    value: ${{ steps.report.outputs.uncovered_routes }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install DevDNA analyzer dependencies
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -r "${{ github.action_path }}/backend/requirements.lock"
+
+    - name: Fetch the pull request's changed files
+      id: changed-files
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const path = `${process.env.RUNNER_TEMP}/devdna-changed-files.txt`;
+          const files = await github.paginate(github.rest.pulls.listFiles, {
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: context.issue.number,
+            per_page: 100,
+          });
+          fs.writeFileSync(path, files.map(file => file.filename).join('\n'));
+          core.setOutput('path', path);
+
+    - name: Generate Markdown and JSON impact reports
+      id: report
+      shell: bash
+      working-directory: ${{ github.action_path }}/backend
+      env:
+        PYTHONPATH: ${{ github.action_path }}/backend
+        PYTHONNOUSERSITE: "1"
+        CHANGED_FILES: ${{ steps.changed-files.outputs.path }}
+        REPORT_MD: ${{ runner.temp }}/devdna-impact.md
+        REPORT_JSON: ${{ runner.temp }}/devdna-impact.json
+      run: |
+        set +e
+        python -m app.cli "$GITHUB_WORKSPACE" \
+          --changed-files-file "$CHANGED_FILES" \
+          --markdown-output "$REPORT_MD" \
+          --json-output "$REPORT_JSON" \
+          --fail-on-uncovered-route
+        code=$?
+        echo "cli_exit_code=$code" >> "$GITHUB_OUTPUT"
+        echo "report_markdown_path=$REPORT_MD" >> "$GITHUB_OUTPUT"
+        echo "report_json_path=$REPORT_JSON" >> "$GITHUB_OUTPUT"
+        if [ "$code" -gt 1 ]; then
+          echo "::error::DevDNA report generation failed (exit $code)."
+          exit "$code"
+        fi
+        python - "$REPORT_JSON" <<'PY'
+        import json
+        import os
+        import sys
+        from pathlib import Path
+
+        try:
+            report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+            uncovered = int(report.get("summary", {}).get("uncovered_routes", 0))
+        except (OSError, TypeError, ValueError) as exc:
+            print(f"::error::Could not read the DevDNA JSON report: {exc}")
+            raise SystemExit(2)
+        output = os.environ.get("GITHUB_OUTPUT")
+        if output:
+            with open(output, "a", encoding="utf-8") as handle:
+                handle.write(f"uncovered_routes={uncovered}\n")
+        print(f"uncovered_routes={uncovered}")
+        PY
+
+    - name: Create or update the PR impact comment
+      if: ${{ inputs.comment-on-pr == 'true' && github.event_name == 'pull_request' }}
+      uses: actions/github-script@v7
+      env:
+        REPORT_MD: ${{ runner.temp }}/devdna-impact.md
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const marker = '<!-- devdna-pr-impact -->';
+          try {
+            const body = `${marker}\n${fs.readFileSync(process.env.REPORT_MD, 'utf8')}`;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              per_page: 100,
+            });
+            const previous = comments.find(comment => comment.body?.includes(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: previous.id,
+                body,
+              });
+              core.info('Updated the existing DevDNA PR impact comment.');
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body,
+              });
+              core.info('Created the DevDNA PR impact comment.');
+            }
+          } catch (error) {
+            // A fork PR's read-only token cannot write comments; the static
+            // report is still valid, so warn instead of failing the job.
+            core.warning(`DevDNA could not post the PR comment: ${error.message}`);
+          }
+
+    - name: Fail on uncovered impacted routes
+      if: ${{ inputs.fail-on-uncovered-route == 'true' && steps.report.outputs.uncovered_routes != '0' && steps.report.outputs.uncovered_routes != '' }}
+      shell: bash
+      run: |
+        echo "::error::DevDNA found ${{ steps.report.outputs.uncovered_routes }} impacted route(s) without a statically mapped predicted-failing test."
+        exit 1

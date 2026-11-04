@@ -1,0 +1,16 @@
+name: DevDNA PR impact
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  devdna:
+    name: Static PR impact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: soham1105-tech/DEVDNA-@main
