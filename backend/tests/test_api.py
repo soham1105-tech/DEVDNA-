@@ -758,9 +758,10 @@ def test_mixed_python_js_import_works_and_experiments_allowed(client):
         db.close()
 
 
-def test_js_only_project_blocks_experiment_creation(client):
-    """Creating an experiment for a JS-only project answers 422 with the
-    analysis-only explanation and queues nothing."""
+def test_js_only_project_can_create_experiment_without_python_gate(client):
+    """A JS-only project is no longer rejected with the old analysis-only 422.
+    Its experiment is queued; the runner-level gate later reports the unknown
+    test runner as blocked."""
     from app import db as dbmod
     from app.models import Experiment
 
@@ -781,13 +782,11 @@ def test_js_only_project_blocks_experiment_creation(client):
     pred_id = pred.json()["id"]
 
     r = client.post(f"/api/predictions/{pred_id}/experiments", json={"approved": True})
-    assert r.status_code == 422
-    body = r.json()["error"]
-    assert body["code"] == "analysis_only"
-    assert "Experiments require a Python pytest suite" in body["message"]
+    assert r.status_code == 202, r.text
+    assert "analysis_only" not in r.text
 
     db = dbmod.SessionLocal()
     try:
-        assert db.query(Experiment).filter(Experiment.prediction_id == pred_id).count() == 0
+        assert db.query(Experiment).filter(Experiment.prediction_id == pred_id).count() == 1
     finally:
         db.close()

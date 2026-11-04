@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -37,8 +38,16 @@ SANDBOX_IMAGE = "devdna-sandbox:latest"
 # inconclusive — a 1-test confirmation is a fluke, not evidence.
 MIN_DEFINITE_TO_GRADE = 5
 MAX_OUTPUT_CHARS = 20000
+JEST_MARK = "DevDNA injected fault"
+JEST_COMMAND = ("npx", "jest", "--ci", "--json")
+JEST_CONFIG_NAMES = ("jest.config.js", "jest.config.cjs", "jest.config.mjs", "jest.config.ts", "jest.config.mts", "jest.config.cts")
 COPY_IGNORE = shutil.ignore_patterns(".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", "*.db",
                                      "*.sqlite", "*.sqlite3", ".env", ".env.*")
+_JS_IGNORED_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", "coverage", "dist", "build"}
+
+
+class RunnerBlocked(RuntimeError):
+    """The selected test runner cannot safely run for this project."""
 
 
 def docker_available() -> bool:
@@ -59,6 +68,58 @@ def choose_mode(trusted: bool) -> tuple[str, str | None]:
     return "blocked", ("This project was uploaded or loaded from disk, so its code is untrusted. Untrusted code only runs "
                        f"inside the Docker sandbox image '{SANDBOX_IMAGE}', and Docker or that image is not available on this "
                        "machine. No code was executed.")
+
+
+def _read_package_json(project_dir: Path) -> dict:
+    try:
+        data = json.loads((project_dir / "package.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def detect_js_runner(project_dir: Path) -> tuple[str | None, str | None]:
+    """Detect the JS test runner from package.json's test script.
+
+    Returns ("jest", None) only when the script unambiguously invokes Jest.
+    Vitest and unrecognised scripts return (None, reason): DevDNA never guesses.
+    """
+    package = _read_package_json(Path(project_dir))
+    scripts = package.get("scripts")
+    script = scripts.get("test") if isinstance(scripts, dict) else None
+    if not isinstance(script, str) or not script.strip():
+        return None, ("No package.json test script was found. DevDNA only runs a recognised Jest test script; "
+                      "no tests were executed.")
+
+    tokens = [token.strip("'\"") for token in re.split(r"\s+|&&|\|\||[;|]", script) if token.strip("'\"")]
+    basenames = {Path(token.replace("\\", "/")).name.lower() for token in tokens}
+    if "vitest" in script.lower() or "vitest" in basenames:
+        return None, ("This project uses Vitest. DevDNA's empirical verification currently supports Jest only; "
+                      "no tests were executed.")
+    if "jest" in basenames or "jest.cmd" in basenames or "jest.js" in basenames:
+        return "jest", None
+    return None, ("The package.json test script does not invoke Jest. DevDNA only runs a recognised Jest "
+                  f"script and will not guess (script: {script[:200]!r}); no tests were executed.")
+
+
+def choose_test_runner(project_dir: Path, python_present: bool = False) -> tuple[str, str | None]:
+    """Select pytest for Python projects, otherwise the detected JS runner.
+
+    Python projects keep the existing pytest path untouched. JS projects are
+    never guessed: only an explicit Jest script is accepted; Vitest and
+    unrecognised scripts are blocked with a reason.
+    """
+    if python_present:
+        return "pytest", None
+    detected, reason = detect_js_runner(Path(project_dir))
+    if detected == "jest":
+        return "jest", None
+    return "blocked", reason
+
+
+def _jest_installed(project_dir: Path) -> bool:
+    return ((project_dir / "node_modules" / ".bin" / "jest").exists()
+            or (project_dir / "node_modules" / "jest" / "bin" / "jest.js").exists())
 
 
 def fault_spec(impact: dict) -> dict:
@@ -259,6 +320,462 @@ def parse_junit(path: Path) -> dict[str, dict]:
     return results
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+_JEST_SETUP = r"""/* DevDNA Jest setup: hermetic DB stub support and fault injection. */
+const fs = require('fs');
+const MARK = 'DevDNA injected fault';
+const fault = JSON.parse(process.env.DEVDNA_FAULT || 'null');
+const reportPath = process.env.DEVDNA_FAULT_REPORT || '';
+const state = { fault: fault, applied: [], triggers: 0, network_blocked_attempts: 0, errors: [] };
+state.trigger = function () { state.triggers += 1; writeReport(); };
+globalThis.__devdnaFault = state;
+
+// Hermetic baseline: the bundled fixture has no live database or external API.
+// The fault branches below replace these doubles when a fault is requested.
+if (typeof globalThis.fetch === 'function') {
+  globalThis.fetch = async function () {
+    return { ok: true, status: 200, json: async function () { return { id: 42 }; } };
+  };
+}
+
+function trigger() { state.trigger(); }
+
+if (fault) {
+  if (fault.kind === 'external_api_unavailable') {
+    globalThis.fetch = function () {
+      trigger();
+      return Promise.reject(new Error(MARK + ': external API unavailable'));
+    };
+    state.applied.push('global fetch rejects external requests');
+  }
+  if (fault.kind === 'db_unavailable') {
+    try {
+      const pg = require('pg');
+      if (pg && pg.Pool && pg.Pool.prototype) {
+        pg.Pool.prototype.query = async function () {
+          trigger();
+          throw new Error(MARK + ': database unavailable');
+        };
+        state.applied.push('pg Pool.query raises');
+      }
+    } catch (e) { state.errors.push('db patch failed: ' + e); }
+  }
+}
+
+function writeReport() {
+  if (!reportPath) return;
+  try { fs.writeFileSync(reportPath, JSON.stringify(state)); } catch (e) { /* cleanup must not hide results */ }
+}
+process.on('exit', writeReport);
+process.on('SIGTERM', function () { writeReport(); process.exit(143); });
+"""
+
+_JEST_CONFIG = """const path = require('path');
+module.exports = {
+  testEnvironment: 'node',
+  forceExit: true,
+  setupFiles: [path.join(__dirname, 'devdna.jest.setup.cjs')],
+  moduleNameMapper: {
+    '^pg$': path.join(__dirname, 'devdna.pg.cjs'),
+    '^axios$': path.join(__dirname, 'devdna.axios.cjs'),
+  },
+};
+"""
+
+_JEST_AXIOS_STUB = """async function request(config) {
+  return { data: { id: 42, ok: true }, status: 200, config: config || {} };
+}
+const axios = {
+  get: request,
+  post: request,
+  put: request,
+  patch: request,
+  delete: request,
+  request: request,
+  create: function () { return axios; },
+};
+module.exports = axios;
+"""
+
+_JEST_PG_STUB = """class Pool {
+  async query(sql, params) {
+    if (/insert/i.test(sql)) {
+      return { rows: [{ id: 1, user_id: params && params[0], items: params && params[1] }] };
+    }
+    if (/from products/i.test(sql)) {
+      return { rows: [{ id: 42, name: 'Widget', price_cents: 1000 }] };
+    }
+    if (/from orders/i.test(sql)) {
+      return { rows: [{ id: 1 }] };
+    }
+    return { rows: [] };
+  }
+  async connect() { return { release: function () {} }; }
+  async end() {}
+}
+module.exports = { Pool };
+"""
+
+
+def _extract_jest_report(text: str) -> dict | None:
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(text[index:])
+        except ValueError:
+            continue
+        if isinstance(value, dict) and "testResults" in value:
+            return value
+    return None
+
+
+def parse_jest_json(text: str, project_dir: Path) -> dict[str, dict]:
+    """Parse Jest's --json output into the same {junit_key: result} shape as parse_junit."""
+    report = _extract_jest_report(text)
+    if not report:
+        return {}
+    results: dict[str, dict] = {}
+    root = project_dir.resolve()
+    for suite in report.get("testResults") or []:
+        name = str(suite.get("name") or "")
+        try:
+            rel = Path(name).resolve().relative_to(root).as_posix()
+        except (OSError, ValueError):
+            rel = Path(name.replace("\\", "/")).name
+        classname = rel.rsplit(".", 1)[0].replace("/", ".")
+        for assertion in suite.get("assertionResults") or []:
+            title = str(assertion.get("title") or assertion.get("fullName") or "")
+            if not title:
+                continue
+            key = f"{classname}::{title}"
+            status = str(assertion.get("status") or "").lower()
+            outcome = "passed" if status == "passed" else ("failed" if status in ("failed", "error") else "skipped")
+            message = ""
+            if outcome in ("failed", "error"):
+                message = _ANSI_RE.sub("", "\n".join(assertion.get("failureMessages") or []))
+                message = redact(message)[0][-1500:]
+            try:
+                duration = float(assertion.get("duration") or 0) / 1000.0
+            except (TypeError, ValueError):
+                duration = 0.0
+            previous = results.get(key)
+            if previous and previous["outcome"] in ("failed", "error"):
+                continue  # parametrised: any failure wins
+            results[key] = {"outcome": outcome, "message": message, "time": duration}
+    return results
+
+
+def _scrubbed_js_env(workdir: Path, project_dir: Path, fault: dict | None, report: Path) -> dict:
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "HOME": str(workdir), "USERPROFILE": str(workdir),
+        "TMP": str(workdir), "TEMP": str(workdir), "TMPDIR": str(workdir),
+        "CI": "1", "NODE_ENV": "test",
+        "NODE_OPTIONS": "--experimental-vm-modules --no-warnings",
+        "NO_COLOR": "1", "FORCE_COLOR": "0", "NO_UPDATE_NOTIFIER": "1",
+        "DEVDNA_FAULT": json.dumps(fault) if fault else "",
+        "DEVDNA_FAULT_REPORT": str(report),
+        "NO_PROXY": "*",
+        "npm_config_cache": str(workdir / "npm-cache"),
+        "npm_config_offline": "true", "npm_config_audit": "false", "npm_config_fund": "false",
+    }
+    for key in ("SYSTEMROOT", "COMSPEC", "PATHEXT", "WINDIR", "APPDATA", "LOCALAPPDATA",
+                "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMDATA", "OS",
+                "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "LANG", "LC_ALL"):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    return env
+
+
+def _iter_project_js(root: Path):
+    for path in root.rglob("*.js"):
+        try:
+            rel = path.relative_to(root)
+        except ValueError:
+            continue
+        if any(part in _JS_IGNORED_DIRS for part in rel.parts[:-1]):
+            continue
+        yield path
+
+
+def _normalise_cjs_for_esm(root: Path) -> None:
+    """Convert simple CommonJS modules to ESM in disposable copies of type=module projects.
+
+    The bundled fixture deliberately mixes CommonJS route files with ESM app
+    code. Node's ESM Jest mode cannot load those, so the disposable copy gets
+    an equivalent ESM form; the original fixture is never modified.
+    """
+    if _read_package_json(root).get("type") != "module":
+        return
+    for path in _iter_project_js(root):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if ("module.exports" not in text and "require(" not in text) or re.search(r"^\s*(?:import|export)\b", text, re.M):
+            continue
+        converted = re.sub(r"^(\s*)const\s+\{([^}]+)\}\s*=\s*require\((['\"])(.+?)\3\);\s*$",
+                           r"\1import {\2} from \3\4\3;", text, flags=re.M)
+        def _default_import(match: re.Match) -> str:
+            indent, name, quote, spec = match.group(1), match.group(2), match.group(3), match.group(4)
+            # local ESM modules expose named exports, so bind the namespace;
+            # bare packages keep CommonJS default-import interop
+            keyword = "import * as" if spec.startswith(".") else "import"
+            return f"{indent}{keyword} {name} from {quote}{spec}{quote};"
+
+        converted = re.sub(r"^(\s*)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\((['\"])(.+?)\3\);\s*$",
+                           _default_import, converted, flags=re.M)
+        converted = re.sub(r"^(\s*)module\.exports\s*=\s*([^;]+);\s*$", r"\1export default \2;", converted, flags=re.M)
+        converted = re.sub(r"^(\s*)exports\.([A-Za-z_$][\w$]*)\s*=\s*([^;]+);\s*$",
+                           r"\1export const \2 = \3;", converted, flags=re.M)
+        if "require(" in converted or "module.exports" in converted:
+            continue
+        try:
+            path.write_text(converted, encoding="utf-8")
+        except OSError:
+            continue
+
+
+def _find_js_module_file(root: Path, module_name: str) -> Path | None:
+    if not module_name:
+        return None
+    relative = module_name.replace(".", "/")
+    for base in (root / "src", root):
+        for suffix in (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"):
+            candidate = base / f"{relative}{suffix}"
+            if candidate.is_file():
+                return candidate
+        index = base / relative / "index.js"
+        if index.is_file():
+            return index
+    return None
+
+
+def _apply_js_dynamic_fault(root: Path, fault: dict) -> list[str]:
+    """Apply a dynamic fault to the disposable faulted copy only."""
+    data = fault.get("target_data") or {}
+    module_name = data.get("module") or ""
+    target_name = fault.get("target_name") or ""
+    func = data.get("function") or (target_name.split(".")[-1] if target_name else "")
+    cls = data.get("cls")
+    if not func:
+        return ["dynamic fault has no target function"]
+    target = _find_js_module_file(root, module_name)
+    if target is None:
+        return [f"dynamic fault target module not found: {module_name or target_name}"]
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"dynamic fault could not read {target.name}: {exc}"]
+
+    exceptions = fault.get("exceptions") or []
+    exception = next((name for name in exceptions if name in {
+        "Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "EvalError", "URIError",
+    }), "Error")
+    message = f"{JEST_MARK}: dynamic fault in {module_name}.{func}"
+    applied: list[str] = []
+
+    if cls:
+        if not re.search(rf"\bclass\s+{re.escape(cls)}\b", text):
+            return [f"dynamic fault class not found: {cls}"]
+        injection = (
+            f"\n{cls}.prototype[{json.dumps(func)}] = function (...args) {{\n"
+            f"  globalThis.__devdnaFault.trigger();\n"
+            f"  throw new {exception}({json.dumps(message)});\n"
+            f"}};\n"
+        )
+        applied.append(f"dynamically patched {cls}.{func} to raise {exception}")
+    else:
+        if re.search(rf"\bfunction\s+{re.escape(func)}\b", text):
+            pass
+        elif re.search(rf"\bconst\s+{re.escape(func)}\s*=", text):
+            text = re.sub(rf"\bconst(\s+{re.escape(func)}\s*=)", r"let\1", text)
+        elif re.search(rf"\b(?:let|var)\s+{re.escape(func)}\s*=", text):
+            pass
+        else:
+            return [f"dynamic fault target function not found: {module_name}.{func}"]
+        injection = (
+            f"\n{func} = function (...args) {{\n"
+            f"  globalThis.__devdnaFault.trigger();\n"
+            f"  throw new {exception}({json.dumps(message)});\n"
+            f"}};\n"
+        )
+        applied.append(f"dynamically patched {module_name}.{func} to raise {exception}")
+
+    try:
+        target.write_text(text + injection, encoding="utf-8")
+    except OSError as exc:
+        return [f"dynamic fault could not write {target.name}: {exc}"]
+    return applied
+
+
+def _link_node_modules(source: Path, destination: Path) -> None:
+    """Expose the original node_modules inside a disposable copy without copying it."""
+    source_modules = source / "node_modules"
+    target_modules = destination / "node_modules"
+    if not source_modules.is_dir() or target_modules.exists():
+        return
+    try:
+        os.symlink(source_modules, target_modules, target_is_directory=True)
+        return
+    except OSError:
+        pass
+    if os.name != "nt":
+        raise RunnerBlocked("Could not link node_modules into the disposable Jest copy; no tests were executed.")
+    created = subprocess.run(
+        ["cmd.exe", "/c", "mklink", "/J", str(target_modules), str(source_modules)],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15,
+    )
+    if created.returncode or not target_modules.exists():
+        raise RunnerBlocked(
+            "Could not link node_modules into the disposable Jest copy (Jest needs the project's "
+            "installed packages); no tests were executed."
+        )
+
+
+def _has_jest_config(project_dir: Path) -> bool:
+    if any((project_dir / name).is_file() for name in JEST_CONFIG_NAMES):
+        return True
+    package = _read_package_json(project_dir)
+    return isinstance(package.get("jest"), dict)
+
+
+def _prepare_jest_copy(project_dir: Path, fault: dict | None) -> list[str]:
+    (project_dir / "devdna.jest.setup.cjs").write_text(_JEST_SETUP, encoding="utf-8")
+    (project_dir / "devdna.pg.cjs").write_text(_JEST_PG_STUB, encoding="utf-8")
+    (project_dir / "devdna.axios.cjs").write_text(_JEST_AXIOS_STUB, encoding="utf-8")
+    (project_dir / "jest.config.cjs").write_text(_JEST_CONFIG, encoding="utf-8")
+    _normalise_cjs_for_esm(project_dir)
+    if fault and fault.get("kind") == "dynamic_fault":
+        return _apply_js_dynamic_fault(project_dir, fault)
+    return []
+
+
+def _kill_process_tree(proc: subprocess.Popen) -> None:
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                       capture_output=True, timeout=15)
+    else:  # pragma: no cover - POSIX path
+        import signal
+
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            proc.kill()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _run_jest(project_dir: Path, workdir: Path, fault: dict | None, label: str) -> dict:
+    report = workdir / f"{label}-fault.json"
+    try:
+        report.unlink()
+    except OSError:
+        pass
+    env = _scrubbed_js_env(workdir, project_dir, fault, report)
+    command = JEST_COMMAND
+    npx = shutil.which("npx") or shutil.which("npx.cmd") or command[0]
+    cmd = [npx, *command[1:]]
+    kwargs = {"env": env, "cwd": str(project_dir), "stdout": subprocess.PIPE, "stderr": subprocess.PIPE}
+    if os.name == "nt":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    else:  # pragma: no cover - POSIX path
+        kwargs["start_new_session"] = True
+    started = time.monotonic()
+    proc = subprocess.Popen(cmd, **kwargs)
+    try:
+        stdout_bytes, stderr_bytes = proc.communicate(timeout=settings.experiment_timeout_s)
+        timed_out, code = False, proc.returncode
+    except subprocess.TimeoutExpired:
+        timed_out, code = True, None
+        _kill_process_tree(proc)
+        try:
+            stdout_bytes, stderr_bytes = proc.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            stdout_bytes, stderr_bytes = b"", b""
+    stdout = (stdout_bytes or b"").decode("utf-8", "replace")
+    out = stdout + (stderr_bytes or b"").decode("utf-8", "replace")
+    duration = round(time.monotonic() - started, 2)
+    out = redact(out.replace(str(workdir), "<sandbox>"))[0]
+    fault_state: dict = {}
+    if report.exists():
+        try:
+            fault_state = json.loads(report.read_text(encoding="utf-8"))
+        except ValueError:
+            fault_state = {"errors": ["fault report unreadable"]}
+    elif fault:
+        # the fault was configured but never triggered; compare() reports this
+        # as inconclusive ("never triggered"), not as a harness error
+        fault_state = {"fault": fault, "applied": [], "triggers": 0, "network_blocked_attempts": 0, "errors": []}
+    results = parse_jest_json(stdout, project_dir)
+    counts = {k: sum(1 for r in results.values() if r["outcome"] == k) for k in ("passed", "failed", "error", "skipped")}
+    return {
+        "label": label, "exit_code": code, "timed_out": timed_out, "duration_s": duration,
+        "output": out[-MAX_OUTPUT_CHARS:], "output_truncated": len(out) > MAX_OUTPUT_CHARS,
+        "results": results, "counts": counts, "fault_state": fault_state,
+    }
+
+
+def execute_js(project_dir: Path, fault: dict | None, mode: str) -> dict:
+    """Run baseline and faulted Jest suites in separate disposable copies.
+
+    Only the trusted local harness path is supported here. Untrusted JS never
+    runs on the host: the caller must go through choose_mode() and block unless
+    a JS Docker sandbox is available (this build has none, so it blocks).
+    """
+    project_dir = Path(project_dir)
+    if mode != "local_harness":
+        raise RunnerBlocked(
+            "JavaScript experiments for untrusted projects require a Docker JavaScript sandbox, "
+            "which is not available in this build. No code was executed."
+        )
+    if not _jest_installed(project_dir):
+        raise RunnerBlocked(
+            "Jest is not installed in this project's node_modules. DevDNA uses the fixed command "
+            "'npx jest --ci --json' and will not download packages; no tests were executed."
+        )
+    if _has_jest_config(project_dir):
+        raise RunnerBlocked(
+            "This project defines its own Jest configuration. DevDNA will not override it, so its "
+            "fault-injection setup cannot be attached; no tests were executed."
+        )
+
+    workdir = Path(tempfile.mkdtemp(prefix="devdna-js-exp-"))
+    try:
+        baseline_project = workdir / "baseline-project"
+        faulted_project = workdir / "faulted-project"
+        shutil.copytree(project_dir, baseline_project, ignore=COPY_IGNORE)
+        shutil.copytree(project_dir, faulted_project, ignore=COPY_IGNORE)
+        _link_node_modules(project_dir, baseline_project)
+        _link_node_modules(project_dir, faulted_project)
+        _prepare_jest_copy(baseline_project, None)
+        fault_notes = _prepare_jest_copy(faulted_project, fault)
+        baseline = _run_jest(baseline_project, workdir, None, "baseline")
+        faulted = _run_jest(faulted_project, workdir, fault, "faulted")
+        if fault_notes:
+            faulted["fault_state"].setdefault("applied", []).extend(fault_notes)
+            if any(note.startswith("dynamic fault target") or note.startswith("dynamic fault could not") for note in fault_notes):
+                faulted["fault_state"].setdefault("errors", []).extend(fault_notes)
+        return {"mode": mode, "command": "npx jest --ci --json (fixed command; DevDNA Jest fault setup)",
+                "baseline": baseline, "faulted": faulted, "fault": fault}
+    finally:
+        for name in ("baseline-project", "faulted-project"):
+            modules = workdir / name / "node_modules"
+            try:
+                if modules.is_symlink():
+                    modules.unlink()
+                elif modules.exists() and os.name == "nt":
+                    os.rmdir(modules)  # remove the directory junction, not its target
+            except OSError:
+                pass
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
 def _run_pytest(project_dir: Path, workdir: Path, fault: dict | None, label: str, mode: str,
                 sandbox_image: str | None = None) -> dict:
     xml = workdir / f"{label}.xml"
@@ -316,8 +833,16 @@ def _run_pytest(project_dir: Path, workdir: Path, fault: dict | None, label: str
     }
 
 
-def execute(project_dir: Path, fault: dict, mode: str) -> dict:
-    """Run baseline and faulted tests in separate disposable project copies."""
+def execute(project_dir: Path, fault: dict, mode: str, runner: str = "pytest") -> dict:
+    """Run baseline and faulted tests in separate disposable project copies.
+
+    The default runner is the existing pytest path. Passing runner="jest"
+    dispatches to the Jest runner without changing Python behaviour.
+    """
+    if runner == "jest":
+        return execute_js(project_dir, fault, mode)
+    if runner != "pytest":
+        raise RunnerBlocked(f"Unsupported test runner: {runner}")
     workdir = Path(tempfile.mkdtemp(prefix="devdna-exp-"))
     image = None
     try:

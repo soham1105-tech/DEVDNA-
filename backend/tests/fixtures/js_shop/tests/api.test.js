@@ -8,7 +8,7 @@ test('GET /api/products returns the catalog', async () => {
 
 test('GET /api/products/:id returns one product', async () => {
   const res = await request(app).get('/api/products/42');
-  expect(res.body).toHaveProperty('id');
+  expect(res.body.detail).toHaveProperty('id');
 });
 
 test('POST /api/orders creates an order', async () => {
