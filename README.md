@@ -396,7 +396,7 @@ Open **`http://localhost:5173`** in your browser.
 DevDNA maintains a comprehensive automated test suite across backend algorithms, security boundaries, and UI components:
 
 ```bash
-# Run backend pytest suite (302 passed, 7 skipped)
+# Run backend pytest suite (308 passed, 1 skipped)
 cd backend && python -m pytest -q
 
 # Run frontend Vitest suite (30 tests)
@@ -515,20 +515,20 @@ DEVDNA/
 │   │   ├── agentguard/         # AI-agent config parsers, rules, permission graph
 │   │   ├── ai/                 # Gemma 4 integration (gemma-4-26b-a4b-it, retry loop)
 │   │   ├── analyzer/           # Python AST parser (+ JS/TS via AST engine), redaction
-│   │   ├── api/                # REST endpoints (projects, predictions, experiments, agentguard, PR review, change intelligence)
+│   │   ├── api/                # REST endpoints (projects, predictions, experiments, agentguard, pr_review, change_intelligence)
 │   │   ├── experiments/        # What-If runner (pytest + Jest) and devdna_faults plugin
 │   │   ├── graph/              # NetworkX MultiDiGraph engine and Dual BFS
 │   │   ├── models/             # SQLAlchemy database models
-│   │   └── services/           # Findings, change intelligence, test gaps, remediation,
-│   │                           #   reliability memory, PR review, calibration, reports
-│   ├── tests/                  # 302 passing pytest unit and integration tests (7 skipped)
+│   │   └── services/           # Findings rules, change impact, change intelligence, test gaps,
+│   │                           #   remediation, reliability memory, PR review, calibration, reports
+│   ├── tests/                  # 308 automated pytest unit and integration tests (1 skipped)
 │   ├── sample_project/         # ShopLite reference e-commerce repository
 │   └── requirements.txt        # Backend dependencies
 ├── frontend/                   # React 18 + Vite Web Application
 │   ├── src/
 │   │   ├── components/         # AIPanel, NewProjectModal, ImpactView, PredictionVsReality
 │   │   ├── layouts/            # AppLayout with theme toggle and global shortcuts
-│   │   ├── pages/              # Overview, Architecture, What-If Lab, Findings, Insights, Reports
+│   │   ├── pages/              # Overview, Architecture, What-If Lab, Findings, Insights, ChangeIntelligence, Reports
 │   │   └── index.css           # Tailwind CSS 4 theme tokens & Bright mode overrides
 │   └── package.json            # Frontend dependencies
 ├── ast-engine/                 # Standalone JS/TS complexity analyser (port 8001)
