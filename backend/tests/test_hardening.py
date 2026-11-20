@@ -97,3 +97,15 @@ def test_delete_project_removes_change_analyses(client):
         assert remaining == []
     finally:
         db.close()
+
+
+def test_scenarios_include_scale_context_metrics(client, sample_project):
+    r = client.get(f"/api/projects/{sample_project}/scenarios")
+    assert r.status_code == 200
+    db_scenario = next(s for s in r.json() if s["id"] == "db_unavailable")
+    assert db_scenario["supported"] is True
+    target = db_scenario["targets"][0]
+    assert target["non_test_total"] > 0
+    assert "routes_depending" in target
+    assert "tests_covering" in target
+    assert 0.0 <= target["criticality"] <= 100.0
