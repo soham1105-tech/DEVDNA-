@@ -404,7 +404,7 @@ cd backend && python -m pytest -q
 # Run AST engine pytest suite (8 passed)
 cd ast-engine && python -m pytest -q
 
-# Run frontend Vitest suite (31 tests)
+# Run frontend Vitest suite (42 tests)
 cd frontend && npm test -- --run
 
 # Compile frontend production bundle
@@ -534,9 +534,10 @@ DEVDNA/
 │   └── requirements.txt        # Backend dependencies
 ├── frontend/                   # React 18 + Vite Web Application
 │   ├── src/
-│   │   ├── components/         # AIPanel, NewProjectModal, ImpactView, PredictionVsReality
+│   │   ├── components/         # AIPanel, NewProjectModal, ImpactView, TermExplainer, ExplainAnalysisButton
+│   │   ├── data/               # Structured Engineering Glossary (20+ terms, Beginner & Technical modes)
 │   │   ├── layouts/            # AppLayout with theme toggle and global shortcuts
-│   │   ├── pages/              # Overview, Architecture, What-If Lab, Findings, Insights, ChangeIntelligence, Reports
+│   │   ├── pages/              # Overview, Architecture, What-If Lab, Findings, Insights, ChangeIntelligence, EngineeringGuide, Reports
 │   │   └── index.css           # Tailwind CSS 4 theme tokens & Bright mode overrides
 │   └── package.json            # Frontend dependencies
 ├── ast-engine/                 # Standalone JS/TS complexity analyser (port 8001)

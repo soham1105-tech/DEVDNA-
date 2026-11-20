@@ -27,6 +27,8 @@ import {
 } from 'lucide-react'
 import { useProject } from '../hooks/useProject'
 import { api } from '../services/api'
+import ExplainAnalysisButton from '../components/ExplainAnalysisButton'
+import TermExplainer from '../components/TermExplainer'
 import {
   Button,
   Card,
@@ -197,6 +199,7 @@ export default function ChangeIntelligence() {
 
         {/* Sample Scenario & Actions */}
         <div className="flex flex-wrap items-center gap-2.5">
+          <ExplainAnalysisButton kind="change_intelligence" data={analysis} />
           {history.length > 1 && (
             <select
               aria-label="Select previous change analysis"
@@ -355,7 +358,9 @@ export default function ChangeIntelligence() {
               {/* Overall Risk Score Badge */}
               <div className="flex items-center gap-6 border-t md:border-t-0 md:border-l border-edge pt-3 md:pt-0 md:pl-6">
                 <div className="text-right">
-                  <div className="text-xs font-medium text-muted uppercase tracking-wider">Change Risk Score</div>
+                  <div className="flex items-center justify-end gap-1 text-xs font-medium text-muted uppercase tracking-wider">
+                    <TermExplainer termId="risk_scoring">Change Risk Score</TermExplainer>
+                  </div>
                   <div className="flex items-baseline justify-end gap-1.5 mt-0.5">
                     <span className={`text-3xl font-extrabold ${
                       risk.level === 'high' ? 'text-negative' : risk.level === 'medium' ? 'text-warning' : 'text-positive'

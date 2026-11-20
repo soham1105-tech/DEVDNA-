@@ -5,10 +5,12 @@ import { Link, useSearchParams } from 'react-router-dom'
 import AIPanel from '../components/AIPanel'
 import { FailureAnalysisResult } from '../components/AIRenderers'
 import CompletionBurst from '../components/CompletionBurst'
+import ExplainAnalysisButton from '../components/ExplainAnalysisButton'
 import ImpactView from '../components/ImpactView'
 import PredictionVsReality from '../components/PredictionVsReality'
 import ProjectGate from '../components/ProjectGate'
 import ScenarioPicker from '../components/ScenarioPicker'
+import TermExplainer from '../components/TermExplainer'
 import { Badge, Button, Card, ErrorState, InlineNotice, PageHeader, Skeleton } from '../components/ui'
 import { useAsync } from '../hooks/useAsync'
 import { useStatus } from '../hooks/useStatus'
@@ -233,8 +235,9 @@ function Lab({ project }) {
         title="What-If Lab"
         subtitle="Controlled experiment validation: predict impact, review isolation guarantees, approve execution, and compare observed test outcomes with the static prediction."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge className="bg-positive-bg text-positive-ink">Controlled validation</Badge>
+            <ExplainAnalysisButton kind="what_if_lab" data={{ mode, prediction, experiment, step }} />
             <Link to="/prediction">
               <Button size="sm" variant="ghost" icon={Radar}>Static Prediction</Button>
             </Link>
@@ -399,7 +402,10 @@ function Lab({ project }) {
           {step === 3 && prediction && (
             <div className="grid gap-4 lg:grid-cols-[1fr_340px] items-start">
               <Card className="p-5">
-                <h2 className="flex items-center gap-2 text-base font-semibold text-ink"><ShieldCheck className="h-4 w-4 text-accent" /> 4. Approve the experiment</h2>
+                <h2 className="flex items-center gap-2 text-base font-semibold text-ink">
+                  <ShieldCheck className="h-4 w-4 text-accent" />
+                  <TermExplainer termId="fault_injection">4. Approve the experiment</TermExplainer>
+                </h2>
                 <p className="mt-1 text-sm text-muted">Nothing runs without your explicit approval. Review the exact scope and safety restrictions below:</p>
                 <ul className="mt-4 space-y-2.5 text-sm text-muted">
                   <li className="flex gap-2.5"><Container className="mt-0.5 h-4 w-4 shrink-0 text-faint" />

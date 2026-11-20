@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Cpu, Gauge, KeyRound, Moon, Server, ShieldCheck, Sparkles, Sun, Trash2 } from 'lucide-react'
+import { BookOpen, Cpu, Gauge, KeyRound, Moon, Server, ShieldCheck, Sparkles, Sun, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { stagger } from '../animations/variants'
@@ -166,6 +166,22 @@ export default function Settings() {
             <p className="text-xs text-faint">
               Quick shortcut: press <kbd className="num rounded border border-control px-1 py-0.5 text-[11px]">⌘+Shift+D</kbd> or click the sun/moon icon in the sidebar.
             </p>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Explanation level" icon={BookOpen} />
+          <div className="space-y-3 p-4 text-sm text-muted">
+            <p>Choose how contextual term explainers and the Engineering Guide describe engineering concepts. Switching levels never changes computed analysis results.</p>
+            <Segmented
+              label="learning mode"
+              value={settings.learningMode || 'technical'}
+              onChange={(v) => update({ learningMode: v })}
+              options={[
+                ['beginner', 'Beginner (Plain English)'],
+                ['technical', 'Technical (Formulas & Details)'],
+              ]}
+            />
           </div>
         </Card>
 

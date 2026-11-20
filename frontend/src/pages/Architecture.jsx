@@ -4,6 +4,7 @@ import { Filter, LayoutGrid, Maximize2, Network, RotateCcw, Search, Sparkles, Ta
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import ComponentDrawer, { EvidenceList } from '../components/graph/ComponentDrawer'
+import ExplainAnalysisButton from '../components/ExplainAnalysisButton'
 import GraphNode from '../components/graph/GraphNode'
 import MultimodalAuditModal from '../components/MultimodalAuditModal'
 import ProjectGate from '../components/ProjectGate'
@@ -191,7 +192,8 @@ function Explorer({ project }) {
         title="Component graph"
         subtitle="Every node and edge comes from static analysis of the source. Click a node for evidence; edges point from a component to what it depends on."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <ExplainAnalysisButton kind="architecture" data={arch.data} />
             <Button
               variant="secondary"
               size="sm"

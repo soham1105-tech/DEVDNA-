@@ -3,6 +3,7 @@ import { Info } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { SCENARIO_ICONS } from '../utils/constants'
 import { shortId } from '../utils/graph'
+import TermExplainer from './TermExplainer'
 
 const ENABLE_HINTS = {
   database: 'Add database connection code (SQLite, SQLAlchemy, psycopg) and re-analyse to enable.',
@@ -113,7 +114,9 @@ export default function ScenarioPicker({ scenarios = [], scenario, target, onSce
                   <span className="num ml-1.5 text-[11px] text-faint">{shortId(selectedTarget.id)}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-muted">Criticality</span>
+                  <TermExplainer termId="criticality">
+                    <span className="text-muted">Criticality</span>
+                  </TermExplainer>
                   <span className={`num font-semibold ${band.cls}`}>{crit}/100</span>
                   <span className="text-[11px] text-faint">({band.label})</span>
                 </div>

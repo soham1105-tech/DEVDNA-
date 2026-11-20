@@ -4,9 +4,11 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import AIPanel from '../components/AIPanel'
 import { FailureAnalysisResult } from '../components/AIRenderers'
+import ExplainAnalysisButton from '../components/ExplainAnalysisButton'
 import ImpactView from '../components/ImpactView'
 import ProjectGate from '../components/ProjectGate'
 import ScenarioPicker from '../components/ScenarioPicker'
+import TermExplainer from '../components/TermExplainer'
 import { Badge, Button, Card, CardHeader, ErrorState, PageHeader, Skeleton } from '../components/ui'
 import { useAsync } from '../hooks/useAsync'
 import { api } from '../services/api'
@@ -62,8 +64,9 @@ function PredictionPage({ project }) {
         title="Failure Prediction"
         subtitle="Static graph analysis: trace reverse dependencies from a failing component without executing code. Validate predictions in the What-If Lab."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge className="bg-accent/15 text-accent">Static analysis</Badge>
+            <ExplainAnalysisButton kind="prediction" data={prediction} />
             <Link to="/lab">
               <Button size="sm" variant="ghost" icon={Beaker}>What-If Lab</Button>
             </Link>
@@ -160,7 +163,8 @@ function PredictionPage({ project }) {
               <div className="space-y-2">
                 <div className="flex items-center justify-between px-1">
                   <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
-                    <Network className="h-3.5 w-3.5 text-accent" /> Deterministic Graph Analysis
+                    <Network className="h-3.5 w-3.5 text-accent" />
+                    <TermExplainer termId="reverse_bfs">Deterministic Graph Analysis</TermExplainer>
                   </span>
                   <span className="text-[11px] text-faint">Computed strictly from AST dependency graph</span>
                 </div>
