@@ -1,6 +1,8 @@
-# DevDNA: The AI-Powered Digital Twin for Software Reliability
+# DevDNA — Change Impact Intelligence
 
 <div align="center">
+
+**Know what breaks before production does.**
 
 [![CI](https://github.com/soham1105-tech/DEVDNA-/actions/workflows/ci.yml/badge.svg)](https://github.com/soham1105-tech/DEVDNA-/actions)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white)](https://python.org)
@@ -9,11 +11,11 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4.1-38bdf8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Google Gemma](https://img.shields.io/badge/Model-Gemma_4_26B-8b5cf6?logo=google&logoColor=white)](https://ai.google.dev/gemma)
 
-**Predict failure blast radius in Python & JavaScript/TypeScript codebases, prove or disprove the prediction by injecting faults into real pytest and Jest test suites, audit AI-agent configurations for security risks, and turn every experiment into a durable reliability memory.**
+**Analyse code changes against deterministic Python & JavaScript/TypeScript dependency graphs, predict affected components and API routes, select prioritized tests, validate predictions with controlled fault-injection experiments, and audit AI-agent configurations.**
 
 Built by Soham Ray and Subha Parida — original engine by Subha Parida, fork development led by Soham Ray. See [AUTHORS](AUTHORS.md).
 
-[Explore Architecture](docs/ARCHITECTURE.md) • [Algorithm Reference](docs/ALGORITHM.md) • [Security & Isolation](docs/SECURITY.md) • [AgentGuard](docs/AGENTGUARD.md) • [Change Impact](docs/CHANGE_IMPACT.md) • [Test Gaps](docs/TEST_GAPS.md) • [Remediation](docs/REMEDIATION.md) • [Reliability](docs/RELIABILITY.md) • [PR Review](docs/PR_REVIEW.md) • [Production Checklist](docs/PRODUCTION_CHECKLIST.md) • [Contributing](CONTRIBUTING.md)
+[Explore Architecture](docs/ARCHITECTURE.md) • [Algorithm Reference](docs/ALGORITHM.md) • [Security & Isolation](docs/SECURITY.md) • [AgentGuard](docs/AGENTGUARD.md) • [Change Impact](docs/CHANGE_IMPACT.md) • [Test Gaps](docs/TEST_GAPS.md) • [Remediation](docs/REMEDIATION.md) • [Reliability](docs/RELIABILITY.md) • [PR Review](docs/PR_REVIEW.md) • [GCP Deployment](docs/DEPLOYMENT.md) • [Production Checklist](docs/PRODUCTION_CHECKLIST.md) • [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -396,10 +398,13 @@ Open **`http://localhost:5173`** in your browser.
 DevDNA maintains a comprehensive automated test suite across backend algorithms, security boundaries, and UI components:
 
 ```bash
-# Run backend pytest suite (308 passed, 1 skipped)
+# Run backend pytest suite (305 passed, 7 skipped when Docker/Jest fixtures absent)
 cd backend && python -m pytest -q
 
-# Run frontend Vitest suite (30 tests)
+# Run AST engine pytest suite (8 passed)
+cd ast-engine && python -m pytest -q
+
+# Run frontend Vitest suite (31 tests)
 cd frontend && npm test -- --run
 
 # Compile frontend production bundle
@@ -506,7 +511,10 @@ DEVDNA/
 │   ├── REMEDIATION.md          # Patch verification on a disposable copy
 │   ├── RELIABILITY.md          # Track-record aggregation of experiment outcomes
 │   ├── PR_REVIEW.md            # Deterministic PR review package
+│   ├── DEPLOYMENT.md           # Google Cloud deployment, IAM, cost, rollback
 │   └── PRODUCTION_CHECKLIST.md # Deployment config + runtime hardening + ops
+├── deploy/                     # Cloud Build CI/CD & GCP deployment scripts
+├── firebase.json               # Firebase Hosting SPA + Cloud Run rewrites
 ├── action.yml                  # Public composite Action for PR impact checks
 ├── backend/                    # FastAPI Backend Service
 │   ├── app/
@@ -521,7 +529,7 @@ DEVDNA/
 │   │   ├── models/             # SQLAlchemy database models
 │   │   └── services/           # Findings rules, change impact, change intelligence, test gaps,
 │   │                           #   remediation, reliability memory, PR review, calibration, reports
-│   ├── tests/                  # 308 automated pytest unit and integration tests (1 skipped)
+│   ├── tests/                  # 305+ automated pytest unit and integration tests
 │   ├── sample_project/         # ShopLite reference e-commerce repository
 │   └── requirements.txt        # Backend dependencies
 ├── frontend/                   # React 18 + Vite Web Application
