@@ -165,4 +165,29 @@ describe('ChangeIntelligence page', () => {
     fireEvent.click(screen.getByText('AI Explanation'))
     expect(screen.getByText(/Modifying get_db cascades to product and order routes/)).toBeInTheDocument()
   })
+
+  it('allows switching between persisted change analyses when history has multiple runs', async () => {
+    const SECOND_ANALYSIS = {
+      ...MOCK_ANALYSIS,
+      id: 'ca_test2',
+      title: 'PR #99: Update pricing.py',
+      risk_assessment: { ...MOCK_ANALYSIS.risk_assessment, score: 78, level: 'high' },
+      recommendation: { ...MOCK_ANALYSIS.recommendation, decision: 'BLOCK RECOMMENDED', headline: 'High risk pricing change.' },
+    }
+    api.listChangeAnalyses.mockResolvedValue([MOCK_ANALYSIS, SECOND_ANALYSIS])
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <ChangeIntelligence />
+      </MemoryRouter>,
+    )
+
+    const select = await screen.findByLabelText('Select previous change analysis')
+    fireEvent.change(select, { target: { value: 'ca_test2' } })
+
+    await waitFor(() => {
+      expect(screen.getByText('BLOCK RECOMMENDED')).toBeInTheDocument()
+    })
+    expect(screen.getByText('78')).toBeInTheDocument()
+  })
 })

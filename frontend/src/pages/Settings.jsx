@@ -135,7 +135,7 @@ export default function Settings() {
             <Row k="Version" v={<span className="num">{status.health?.version || '—'}</span>} />
             <Row k="Database" v={status.health?.database || '—'} />
             <Row k="Docker sandbox" v={ai?.docker_sandbox ? 'available' : 'not available (uploaded projects cannot run experiments)'} />
-            <Row k="API docs" v={<a className="text-accent hover:underline" href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">OpenAPI /docs</a>} />
+            <Row k="API docs" v={<a className="text-accent hover:underline" href={`${(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')}/docs`} target="_blank" rel="noreferrer">OpenAPI /docs</a>} />
           </div>
         </Card>
 

@@ -7,7 +7,7 @@ import AnalysisProgress from './AnalysisProgress'
 import { Button, ErrorState, Modal } from './ui'
 
 const TABS = [
-  { id: 'sample', label: 'Demo project', icon: Sparkles },
+  { id: 'sample', label: 'Sample project', icon: Sparkles },
   { id: 'zip', label: 'Upload ZIP', icon: UploadCloud },
   { id: 'local', label: 'Local folder', icon: FolderOpen },
 ]
@@ -79,7 +79,7 @@ export default function NewProjectModal({ open, onClose, initialTab = 'sample' }
               onClick={go}
               disabled={(tab === 'zip' && !file && !githubUrl.trim()) || (tab === 'local' && !path.trim())}
             >
-              {tab === 'sample' ? 'Load demo project' : 'Analyse'}
+              {tab === 'sample' ? 'Load sample project' : 'Analyse'}
             </Button>
           </>
         ) : null

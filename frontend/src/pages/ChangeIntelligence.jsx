@@ -195,8 +195,25 @@ export default function ChangeIntelligence() {
           </p>
         </div>
 
-        {/* Demo Button & Actions */}
+        {/* Sample Scenario & Actions */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {history.length > 1 && (
+            <select
+              aria-label="Select previous change analysis"
+              value={analysis?.id || ''}
+              onChange={(e) => {
+                const chosen = history.find((h) => h.id === e.target.value)
+                if (chosen) setAnalysis(chosen)
+              }}
+              className="h-9 max-w-[220px] truncate rounded-control border border-edge bg-surface px-2.5 text-xs text-ink outline-none focus:border-accent"
+            >
+              {history.map((h) => (
+                <option key={h.id} value={h.id}>
+                  {h.title || h.id} ({h.risk_assessment?.score ?? 0}/100)
+                </option>
+              ))}
+            </select>
+          )}
           <Button
             variant="outline"
             onClick={handleRunDemo}
@@ -204,7 +221,7 @@ export default function ChangeIntelligence() {
             icon={Play}
             className="border-accent/40 bg-accent/10 text-accent hover:bg-accent/20"
           >
-            {loading ? 'Analyzing...' : 'Run Buildathon Demo: DB Handler'}
+            {loading ? 'Analyzing...' : 'Run Sample Scenario: DB Handler'}
           </Button>
           {analysis && !val?.executed && (
             <Button
@@ -294,10 +311,10 @@ export default function ChangeIntelligence() {
         <EmptyState
           icon={GitPullRequest}
           title="No Change Analysis Run Yet"
-          message="Click 'Run Buildathon Demo: DB Handler' to run the bundled end-to-end database handler scenario, or input changed files above."
+          message="Click 'Run Sample Scenario: DB Handler' to run the bundled end-to-end database handler scenario, or input changed files above."
           action={
             <Button onClick={handleRunDemo} icon={Play}>
-              Run Buildathon Demo
+              Run Sample Scenario
             </Button>
           }
         />
