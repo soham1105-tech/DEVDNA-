@@ -4,6 +4,7 @@ from __future__ import annotations
 import fnmatch
 import io
 import os
+import re
 import stat
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -111,6 +112,12 @@ def safe_extract_zip(data: bytes, dest: Path) -> dict:
     # Strip a single common top-level folder (typical of GitHub ZIP downloads).
     tops = {p.parts[0] for _, p in plan if len(p.parts) > 1}
     strip = len(tops) == 1 and all(len(p.parts) > 1 for _, p in plan)
+    if strip:
+        top_dir = next(iter(tops))
+        stats["archive_root"] = top_dir
+        sha_match = re.search(r"-([0-9a-f]{7,40})$", top_dir)
+        if sha_match:
+            stats["commit_sha"] = sha_match.group(1)
 
     dest = dest.resolve()
     dest.mkdir(parents=True, exist_ok=True)

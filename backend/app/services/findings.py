@@ -134,13 +134,23 @@ def generate_findings(g, result: dict) -> list[dict]:
                 "mitigation": "Add an API test for this route, including a failure case.",
             })
     for s in result.get("secret_hits", []):
+        norm_file = (s.get("file") or "").replace("\\", "/").lower()
+        is_non_prod = any(
+            marker in norm_file
+            for marker in ("tests/", "/tests/", "test_", "_test.", "fixtures/", "/fixtures/", "examples/", "docs/", ".example")
+        )
         findings.append({
-            "rule": "hardcoded_secret", "severity": "high", "component_id": None,
+            "rule": "hardcoded_secret",
+            "severity": "low" if is_non_prod else "high",
+            "component_id": None,
             "title": f"Possible hard-coded secret in {s['file']}",
             "description": "A value that looks like a credential is present in source. The value is redacted and was "
                            "never shown or sent anywhere.",
             "evidence": [s], "confidence": "medium",
-            "assumptions": ["Pattern-based detection can produce false positives."],
+            "assumptions": [
+                "Pattern-based detection can produce false positives.",
+                *(["Detected in a test, fixture, or example path; verify whether this is a dummy credential or a real secret."] if is_non_prod else []),
+            ],
             "mitigation": "Move the value to a secret manager or environment variable and rotate it.",
         })
     for b in sig.get("broad_excepts", []):

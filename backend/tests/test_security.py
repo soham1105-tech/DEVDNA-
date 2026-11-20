@@ -65,6 +65,34 @@ def test_symlink_still_validates_path_traversal_and_uncompressed_limit(tmp_path,
         safe_extract_zip(make_zip({}, symlink="link"), tmp_path / "out2")
 
 
+def test_github_zipball_records_commit_sha(tmp_path):
+    out = tmp_path / "out"
+    archive = make_zip({"fastapi-full-stack-fastapi-template-a1b2c3d/app.py": b"x = 1\n"})
+    stats = safe_extract_zip(archive, out)
+    assert stats["commit_sha"] == "a1b2c3d"
+    assert stats["archive_root"] == "fastapi-full-stack-fastapi-template-a1b2c3d"
+
+
+def test_secret_in_test_fixture_downgraded_to_low_while_prod_stays_high():
+    import networkx as nx
+    from app.services.findings import generate_findings
+
+    g = nx.MultiDiGraph()
+    result = {
+        "edges": [],
+        "signals": {},
+        "coverage": {"parse_errors": []},
+        "secret_hits": [
+            {"file": "tests/fixtures/fake_creds.py", "line": 3, "snippet": "api_key = '<redacted>'"},
+            {"file": "backend/app/config.py", "line": 10, "snippet": "api_key = '<redacted>'"},
+        ],
+    }
+    findings = generate_findings(g, result)
+    by_file = {f["evidence"][0]["file"]: f for f in findings}
+    assert by_file["backend/app/config.py"]["severity"] == "high"
+    assert by_file["tests/fixtures/fake_creds.py"]["severity"] == "low"
+
+
 def test_rejects_too_many_entries(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "max_zip_entries", 5)
     with pytest.raises(ZipSecurityError, match="entries"):

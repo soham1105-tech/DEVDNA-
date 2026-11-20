@@ -67,7 +67,7 @@ DevDNA constructs a **digital twin** of any Python or JavaScript/TypeScript code
 
 ### Repository Health & Failure Readiness Dashboard
 <img src="assets/overview-dashboard.png" alt="DevDNA Overview Dashboard" width="95%" />
-*Discovers components, analyzes confirmed vs. inferred evidence, flags structural risks, and launches 3-minute hackathon scenarios.*
+*Discovers components, analyzes confirmed vs. inferred evidence, flags structural risks, and launches guided failure scenarios.*
 
 ---
 
@@ -206,7 +206,7 @@ DevDNA Change Intelligence extends the digital twin into an active, change-aware
    - Deterministic offline fallback when Gemini is unavailable.
 8. **Interactive Change Intelligence Dashboard (`/change-intelligence`):**
    - 6 tabbed views: **Change Overview**, **Impact Graph**, **Risk Breakdown**, **Test Intelligence**, **Validation Report**, and **AI Explanation**.
-   - Includes a one-click **"Run Buildathon Demo: DB Handler"** scenario for instant live evaluation.
+   - Includes a one-click **"Run Demo Scenario: DB Handler"** on the bundled ShopLite sample project (restricted to sample projects so it can never contaminate real imported repositories).
 
 ### API & CLI Usage
 
@@ -216,7 +216,7 @@ DevDNA Change Intelligence extends the digital twin into an active, change-aware
 | **List Analyses** | `GET /api/projects/{id}/change-intelligence` | Query historical change analyses for a project |
 | **Get Analysis** | `GET /api/projects/{id}/change-intelligence/{analysis_id}` | Retrieve complete analysis report and evidence |
 | **Run Validation** | `POST /api/projects/{id}/change-intelligence/{analysis_id}/validate` | Trigger isolated empirical fault injection |
-| **Buildathon Demo** | `POST /api/projects/{id}/change-intelligence/demo` | Run the bundled database handler modification demo |
+| **Sample Scenario** | `POST /api/projects/{id}/change-intelligence/sample-scenario` | Run the bundled ShopLite DB handler demonstration (sample projects only) |
 | **CLI Analysis** | `python -m app.cli <path> --change-intelligence --diff-file diff.patch` | Run Change Intelligence from terminal / CI |
 | **GitHub Action** | `.github/workflows/pr-impact.yml` | Automatic PR check runs & comments on pull requests |
 
@@ -398,13 +398,13 @@ Open **`http://localhost:5173`** in your browser.
 DevDNA maintains a comprehensive automated test suite across backend algorithms, security boundaries, and UI components:
 
 ```bash
-# Run backend pytest suite (305 passed, 7 skipped when Docker/Jest fixtures absent)
+# Run backend pytest suite (315+ passed; Docker/Jest tests skip when unavailable)
 cd backend && python -m pytest -q
 
 # Run AST engine pytest suite (8 passed)
 cd ast-engine && python -m pytest -q
 
-# Run frontend Vitest suite (42 tests)
+# Run frontend Vitest suite (45 tests)
 cd frontend && npm test -- --run
 
 # Compile frontend production bundle

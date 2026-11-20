@@ -202,13 +202,20 @@ def analyze_code_change(
         else "Change Intelligence Analysis"
     )
 
-    resolved_base_ref = base_ref or project.ast_branch
+    commit_sha = (project.ingest_stats or {}).get("commit_sha")
+    if base_ref:
+        resolved_base_ref = base_ref
+    elif project.ast_branch and commit_sha:
+        resolved_base_ref = f"{project.ast_branch}@{commit_sha[:7]}"
+    else:
+        resolved_base_ref = project.ast_branch or commit_sha
     resolved_head_ref = head_ref or ("working-tree" if (source_path / ".git").exists() else None)
     change_manifest["repository"] = {
         "project_id": project.id,
         "name": project.name,
         "source_type": project.source_type,
         "branch": project.ast_branch,
+        "commit_sha": commit_sha,
     }
     change_manifest["unmapped_files"] = unmapped_files
 
