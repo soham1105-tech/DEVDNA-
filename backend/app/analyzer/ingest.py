@@ -76,12 +76,16 @@ def safe_extract_zip(data: bytes, dest: Path) -> dict:
 
     total = 0
     plan: list[tuple[zipfile.ZipInfo, PurePosixPath]] = []
-    stats = {"entries": len(infos), "extracted": 0, "skipped_ignored": 0, "skipped_sensitive": 0, "sensitive_files": []}
+    stats = {
+        "entries": len(infos),
+        "extracted": 0,
+        "skipped_ignored": 0,
+        "skipped_sensitive": 0,
+        "skipped_symlinks": 0,
+        "sensitive_files": [],
+    }
     for info in infos:
         p = _validate_member_name(info.filename)
-        mode = (info.external_attr >> 16) & 0xFFFF
-        if stat.S_ISLNK(mode):
-            raise ZipSecurityError(f"Archive contains a symbolic link: {info.filename!r}")
         if info.flag_bits & 0x1:
             raise ZipSecurityError("Encrypted archives are not supported")
         if info.is_dir():
@@ -91,6 +95,10 @@ def safe_extract_zip(data: bytes, dest: Path) -> dict:
             raise ZipSecurityError("Archive expands beyond the uncompressed size limit (possible ZIP bomb)")
         if info.compress_size and info.file_size / max(info.compress_size, 1) > settings.max_compression_ratio and info.file_size > 1024 * 1024:
             raise ZipSecurityError(f"Suspicious compression ratio for {info.filename!r} (possible ZIP bomb)")
+        mode = (info.external_attr >> 16) & 0xFFFF
+        if stat.S_ISLNK(mode):
+            stats["skipped_symlinks"] += 1
+            continue
         if is_ignored(p.parts):
             stats["skipped_ignored"] += 1
             continue

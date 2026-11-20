@@ -28,9 +28,41 @@ def test_rejects_path_traversal(tmp_path, name):
     assert not (tmp_path / "evil.py").exists()
 
 
-def test_rejects_symlinks(tmp_path):
-    with pytest.raises(ZipSecurityError, match="symbolic link"):
-        safe_extract_zip(make_zip({"ok.py": b"x=1"}, symlink="link"), tmp_path / "out")
+def test_skips_symlinks_and_extracts_regular_files(tmp_path):
+    out = tmp_path / "out"
+    stats = safe_extract_zip(make_zip({"ok.py": b"x = 1\n"}, symlink="link"), out)
+    assert stats["skipped_symlinks"] == 1
+    assert stats["extracted"] == 1
+    assert (out / "ok.py").read_bytes() == b"x = 1\n"
+    assert not (out / "link").exists()
+    assert not (out / "link").is_symlink()
+
+
+def test_skips_agents_skills_fastapi_symlink_and_extracts_repo(tmp_path):
+    out = tmp_path / "out"
+    archive = make_zip(
+        {
+            "full-stack-fastapi-template-master/backend/app/main.py": b"from fastapi import FastAPI\napp = FastAPI()\n",
+            "full-stack-fastapi-template-master/README.md": b"# FastAPI Template\n",
+        },
+        symlink="full-stack-fastapi-template-master/.agents/skills/fastapi",
+    )
+    stats = safe_extract_zip(archive, out)
+    assert stats["skipped_symlinks"] == 1
+    assert stats["extracted"] == 2
+    assert (out / "backend" / "app" / "main.py").is_file()
+    assert (out / "README.md").is_file()
+    assert not (out / ".agents" / "skills" / "fastapi").exists()
+    assert not (out / ".agents" / "skills" / "fastapi").is_symlink()
+
+
+def test_symlink_still_validates_path_traversal_and_uncompressed_limit(tmp_path, monkeypatch):
+    with pytest.raises(ZipSecurityError, match="traversal"):
+        safe_extract_zip(make_zip({"ok.py": b"x=1"}, symlink="../evil-link"), tmp_path / "out1")
+
+    monkeypatch.setattr(settings, "max_uncompressed_bytes", 5)
+    with pytest.raises(ZipSecurityError, match="uncompressed"):
+        safe_extract_zip(make_zip({}, symlink="link"), tmp_path / "out2")
 
 
 def test_rejects_too_many_entries(tmp_path, monkeypatch):
