@@ -52,7 +52,7 @@ class RequestIdMiddleware:
         finally:
             duration_ms = (time.perf_counter() - started) * 1000
             path = scope.get("path", "")
-            if path != "/api/health":  # health probes would flood the log
+            if path not in ("/api/health", "/api/ready"):  # health/readiness probes would flood the log
                 log.info("%s %s -> %s (%.0f ms) request_id=%s", scope.get("method", "?"),
                          path, status_holder["status"], duration_ms, request_id)
 

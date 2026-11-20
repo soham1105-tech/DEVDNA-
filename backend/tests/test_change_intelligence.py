@@ -366,13 +366,13 @@ def test_api_change_intelligence_endpoints(client, sample_project):
 
 
 def test_api_change_intelligence_demo_scenario(client, sample_project):
-    """Verify Buildathon demo scenario runs end-to-end and executes validation experiment."""
+    """Verify bundled sample scenario runs end-to-end and executes validation experiment."""
     r = client.post(f"/api/projects/{sample_project}/change-intelligence/demo")
     assert r.status_code == 200, r.text
     body = r.json()
 
     assert body["status"] == "completed"
-    assert "Demo PR #42" in body["title"]
+    assert "Sample PR #42" in body["title"]
 
     # Diff manifest
     files = body["diff_manifest"]["files"]

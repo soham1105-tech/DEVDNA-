@@ -25,8 +25,6 @@ async def lifespan(app: FastAPI):
     recover_stale_experiments()
     from app.api.projects import recover_stale_analysis_runs
     recover_stale_analysis_runs()
-    from app.api.projects import recover_stale_analysis_runs
-    recover_stale_analysis_runs()
     if not settings.api_token and not settings.local_only:
         raise RuntimeError(
             "DEVDNA_API_TOKEN is not set. Set a token to protect the API, or set "
@@ -44,7 +42,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DevDNA API",
     version=system.VERSION,
-    description="AI-powered digital twin for software systems: discover, visualise, predict, experiment, compare.",
+    description="Change Impact Intelligence platform: analyse architecture, predict blast radius, and validate with controlled experiments.",
     lifespan=lifespan,
 )
 # Guard first (innermost) so CORS stays the outermost layer and error

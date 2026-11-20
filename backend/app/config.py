@@ -47,6 +47,13 @@ class Settings:
     )
     # Experiments
     experiment_timeout_s: int = field(default_factory=lambda: _int("DEVDNA_EXPERIMENT_TIMEOUT", 90))
+    # Set DEVDNA_EXPERIMENTS_ENABLED=false in cloud API containers (e.g. Cloud Run)
+    # where untrusted code execution must be disabled or delegated to an isolated worker.
+    experiments_enabled: bool = field(
+        default_factory=lambda: os.environ.get("DEVDNA_EXPERIMENTS_ENABLED", "true").strip().lower() not in ("0", "false", "no")
+    )
+    # Optional Google Cloud Storage bucket for persistent uploads/reports in cloud deployments.
+    gcs_bucket: str = field(default_factory=lambda: os.environ.get("DEVDNA_GCS_BUCKET", "").strip())
     # Opt-in API auth: when DEVDNA_API_TOKEN is set, every /api route except
     # /api/health requires a matching X-DevDNA-Token header. Empty = local,
     # unauthenticated mode, which must be acknowledged with DEVDNA_LOCAL_ONLY

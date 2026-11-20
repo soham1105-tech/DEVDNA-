@@ -74,7 +74,7 @@ class _GuardMiddleware:
                 await _json(send, 429, "Too many requests. Slow down and retry in a minute.")
                 return
             token = os.environ.get("AST_ENGINE_API_TOKEN", "").strip()
-            if token and path.rstrip("/") != "/":
+            if token and path.rstrip("/") not in ("", "/health"):
                 sent = {k.decode("latin-1").lower(): v.decode("latin-1")
                         for k, v in scope.get("headers", [])}
                 supplied = sent.get(TOKEN_HEADER.lower(), "")
@@ -124,6 +124,11 @@ def _get(url: str, headers: dict, timeout: int = 30) -> requests.Response:
 @app.get("/")
 def read_root():
     return {"status": "DevDNA AST Engine is running. Go to /docs to test."}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "devdna-ast-engine"}
 
 
 def _repository_from_github_url(github_url: str) -> tuple[str, str]:

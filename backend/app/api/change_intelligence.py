@@ -4,7 +4,7 @@ Provides:
 - Starting a change analysis (diff, branch, or file list)
 - Retrieving analysis results, graph diff, risk score, prioritized tests, and merge recommendation
 - Running / re-running controlled validation experiments
-- Built-in Buildathon demo scenario (database connection handler modification)
+- Built-in sample scenario (database connection handler modification)
 """
 from __future__ import annotations
 
@@ -158,12 +158,13 @@ DEMO_DIFF = """diff --git a/shoplite/db.py b/shoplite/db.py
 """
 
 
+@router.post("/projects/{project_id}/change-intelligence/sample-scenario", status_code=200)
 @router.post("/projects/{project_id}/change-intelligence/demo", status_code=200)
-def run_buildathon_demo(
+def run_sample_scenario(
     project_id: str,
     db: Session = Depends(get_db),
 ):
-    """Execute the bundled Buildathon Change Intelligence demonstration scenario.
+    """Execute the bundled Change Intelligence sample scenario on the ShopLite reference project.
 
     Scenario: A developer modifies the database connection handler in shoplite/db.py:get_db.
     DevDNA detects:
@@ -171,9 +172,9 @@ def run_buildathon_demo(
     2. Dependent services and API routes (pricing, orders, /api/orders, /api/checkout)
     3. Multi-factor risk calculation & blast radius
     4. Prioritized tests (test_api.py::test_create_order, etc.)
-    5. Controlled database-unavailable validation
+    5. Controlled database-unavailable validation (when experiments are permitted)
     6. Prediction vs reality comparison
-    7. Evidence-backed merge recommendation with AI reasoning.
+    7. Evidence-backed merge recommendation with grounded reasoning.
     """
     get_project(db, project_id)
     try:
@@ -182,12 +183,12 @@ def run_buildathon_demo(
             project_id,
             diff_text=DEMO_DIFF,
             run_validation=True,
-            title="Demo PR #42: Update Database Session Isolation Handler",
+            title="Sample PR #42: Update Database Session Isolation Handler",
             request_ai=True,
         )
         return _change_analysis_out(record)
     except ValueError as e:
-        raise HTTPException(400, detail={"code": "demo_error", "message": str(e)}) from e
+        raise HTTPException(400, detail={"code": "sample_scenario_error", "message": str(e)}) from e
     except Exception as e:
-        log.error("Change intelligence demo failed: %s", e, exc_info=True)
-        raise HTTPException(500, detail={"code": "demo_failed", "message": f"Demo run failed: {e}"}) from e
+        log.error("Change intelligence sample scenario failed: %s", e, exc_info=True)
+        raise HTTPException(500, detail={"code": "sample_scenario_failed", "message": f"Sample scenario failed: {e}"}) from e

@@ -1,0 +1,5 @@
+# Production add-on dependencies for Google Cloud deployments (Cloud SQL PostgreSQL + GCS).
+# Local development continues to work with requirements.lock alone (SQLite).
+-r requirements.lock
+psycopg[binary]==3.2.6
+google-cloud-storage==2.19.0

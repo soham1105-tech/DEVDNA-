@@ -22,7 +22,7 @@ from app.api.deps import get_project, pagination_params
 from app.config import settings
 from app.db import get_db
 from app.models import (
-    AIInteraction, AnalysisRun, Experiment, FindingSuppression, FindingSuppressionAudit, Prediction, PredictionOutcome, Project,
+    AIInteraction, AnalysisRun, ChangeAnalysis, Experiment, FindingSuppression, FindingSuppressionAudit, Prediction, PredictionOutcome, Project,
     ReportRecord, _id,
 )
 from app.schemas import GitHubProjectIn, LocalProjectIn
@@ -180,7 +180,12 @@ def list_projects(db: Session = Depends(get_db), params: tuple[int, int] = Depen
     limit, offset = params
     total = db.scalar(select(func.count()).select_from(Project))
     projects = db.scalars(select(Project).order_by(Project.created_at.desc(), Project.id.desc()).offset(offset).limit(limit)).all()
-    items = [project_out(p, db.get(AnalysisRun, p.latest_run_id) if p.latest_run_id else None) for p in projects]
+    run_ids = [p.latest_run_id for p in projects if p.latest_run_id]
+    runs_by_id = (
+        {r.id: r for r in db.scalars(select(AnalysisRun).where(AnalysisRun.id.in_(run_ids))).all()}
+        if run_ids else {}
+    )
+    items = [project_out(p, runs_by_id.get(p.latest_run_id) if p.latest_run_id else None) for p in projects]
     return JSONResponse(content=items, headers={"X-Total-Count": str(total)})
 
 
@@ -191,7 +196,7 @@ def load_sample(background: BackgroundTasks, db: Session = Depends(get_db)):
     dest = settings.projects_dir / pid / "source"
     shutil.copytree(settings.sample_project_dir, dest, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", "*.db"))
     scan = scan_tree(dest)
-    project = Project(id=pid, name="ShopLite (demo)", source_type="sample", source_path=str(dest), trusted=True,
+    project = Project(id=pid, name="ShopLite (sample)", source_type="sample", source_path=str(dest), trusted=True,
                       ingest_stats={"files": scan["file_count"], "languages": scan["languages"]})
     db.add(project)
     db.commit()
@@ -268,7 +273,7 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
     p = get_project(db, project_id)
     if p.source_type in ("sample", "upload", "github"):
         shutil.rmtree(settings.projects_dir / p.id, ignore_errors=True)
-    for model in (Experiment, Prediction, AIInteraction, ReportRecord, FindingSuppression, FindingSuppressionAudit, PredictionOutcome):
+    for model in (ChangeAnalysis, Experiment, Prediction, AIInteraction, ReportRecord, FindingSuppression, FindingSuppressionAudit, PredictionOutcome):
         db.query(model).filter(model.project_id == p.id).delete()
     db.delete(p)
     db.commit()
