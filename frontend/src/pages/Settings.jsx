@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Cpu, Gauge, KeyRound, Moon, Server, ShieldCheck, Sparkles, Sun, Trash2 } from 'lucide-react'
+import { BookOpen, Cpu, Gauge, KeyRound, Moon, Server, ShieldCheck, Sparkles, Sun, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { stagger } from '../animations/variants'
@@ -135,7 +135,7 @@ export default function Settings() {
             <Row k="Version" v={<span className="num">{status.health?.version || '—'}</span>} />
             <Row k="Database" v={status.health?.database || '—'} />
             <Row k="Docker sandbox" v={ai?.docker_sandbox ? 'available' : 'not available (uploaded projects cannot run experiments)'} />
-            <Row k="API docs" v={<a className="text-accent hover:underline" href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">OpenAPI /docs</a>} />
+            <Row k="API docs" v={<a className="text-accent hover:underline" href={`${(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')}/docs`} target="_blank" rel="noreferrer">OpenAPI /docs</a>} />
           </div>
         </Card>
 
@@ -166,6 +166,22 @@ export default function Settings() {
             <p className="text-xs text-faint">
               Quick shortcut: press <kbd className="num rounded border border-control px-1 py-0.5 text-[11px]">⌘+Shift+D</kbd> or click the sun/moon icon in the sidebar.
             </p>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Explanation level" icon={BookOpen} />
+          <div className="space-y-3 p-4 text-sm text-muted">
+            <p>Choose how contextual term explainers and the Engineering Guide describe engineering concepts. Switching levels never changes computed analysis results.</p>
+            <Segmented
+              label="learning mode"
+              value={settings.learningMode || 'technical'}
+              onChange={(v) => update({ learningMode: v })}
+              options={[
+                ['beginner', 'Beginner (Plain English)'],
+                ['technical', 'Technical (Formulas & Details)'],
+              ]}
+            />
           </div>
         </Card>
 

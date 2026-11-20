@@ -15,13 +15,13 @@ export const WORKFLOW = [
   { key: 'compare', label: 'Compare', icon: GitCompareArrows, text: 'Prediction vs. observed reality' },
 ]
 
-/** First screen: two clear actions, analyse a repository or explore the demo. */
+/** First screen: two clear actions, analyse a repository or explore the bundled sample project. */
 export default function Welcome({ onAnalyse }) {
   const flow = useAnalysisFlow()
   const status = useStatus()
   const navigate = useNavigate()
 
-  const demo = async () => {
+  const loadSample = async () => {
     const res = await flow.start('sample')
     if (res) navigate('/')
   }
@@ -30,10 +30,10 @@ export default function Welcome({ onAnalyse }) {
     <motion.div variants={stagger} initial="initial" animate="animate" className="mx-auto max-w-5xl py-6 lg:py-12">
       <motion.div variants={item}>
         <h1 className="max-w-3xl text-balance text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
-          The digital twin for your software system
+          Know what breaks before production does.
         </h1>
         <p className="mt-4 max-w-2xl text-balance text-muted">
-          DevDNA maps your architecture from source code, predicts what breaks when a dependency fails, then proves or disproves the prediction with a controlled experiment. Powered by Gemma 4, open-source AI.
+          DevDNA maps your architecture from source code, traces change impact across components and routes, and validates predictions through controlled experiments.
         </p>
       </motion.div>
 
@@ -62,13 +62,13 @@ export default function Welcome({ onAnalyse }) {
         <motion.button
           whileHover={{ y: -3 }}
           whileTap={{ scale: 0.99 }}
-          onClick={demo}
+          onClick={loadSample}
           disabled={flow.busy}
           className="group rounded-card border border-accent/40 bg-surface p-6 text-left transition-colors hover:border-accent disabled:cursor-wait"
         >
           <div className="flex items-center gap-2.5">
             <ScanSearch className="h-5 w-5 text-accent" />
-            <h2 className="text-lg font-semibold text-ink">Explore Demo Project</h2>
+            <h2 className="text-lg font-semibold text-ink">Explore Sample Project</h2>
           </div>
           <p className="mt-2 text-sm text-muted">ShopLite: a FastAPI shop with SQLite, an external shipping API, a background worker and a real pytest suite. Works offline, no API key needed.</p>
           {flow.busy || flow.run ? (
@@ -84,7 +84,7 @@ export default function Welcome({ onAnalyse }) {
       </motion.div>
       {flow.error && (
         <div className="mt-4">
-          <ErrorState title="Could not load the demo" error={flow.error} onRetry={demo} />
+          <ErrorState title="Could not load the sample project" error={flow.error} onRetry={loadSample} />
         </div>
       )}
 

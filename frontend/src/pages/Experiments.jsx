@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { Beaker, ChevronRight, FlaskConical } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { item, stagger } from '../animations/variants'
+import ExplainAnalysisButton from '../components/ExplainAnalysisButton'
 import ProjectGate from '../components/ProjectGate'
 import { Button, Card, CardHeader, EmptyState, ErrorState, PageHeader, Skeleton, StatusBadge } from '../components/ui'
 import { useAsync } from '../hooks/useAsync'
@@ -22,7 +23,12 @@ function ExperimentsPage({ project }) {
   return (
     <>
       <PageHeader title="Experiment history" subtitle="Every executed experiment with its verdict, plus predictions that have not been validated yet."
-        actions={<Link to="/lab"><Button variant="primary" icon={Beaker}>New experiment</Button></Link>} />
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <ExplainAnalysisButton kind="experiments" data={{ experiments: exps.data || [], untested }} />
+            <Link to="/lab"><Button variant="primary" icon={Beaker}>New experiment</Button></Link>
+          </div>
+        } />
       {(exps.loading && !exps.data) ? <Skeleton className="h-40" /> : exps.error ? <ErrorState error={exps.error} onRetry={exps.reload} /> : (
         <motion.div variants={stagger} initial="initial" animate="animate" className="space-y-4">
           {exps.data.length === 0 && untested.length === 0 && (

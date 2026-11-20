@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Activity, Beaker, ChevronDown, FileText, FlaskConical, Menu, MessageSquareText, Moon, Plus, Radar, Settings, ShieldAlert, Sun, Workflow, X, Lightbulb } from 'lucide-react'
+  Activity, Beaker, BookOpen, ChevronDown, FileText, FlaskConical, GitPullRequest, Menu, MessageSquareText, Moon, Plus, Radar, Settings, ShieldAlert, Sun, Workflow, X, Lightbulb } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useOutlet } from 'react-router-dom'
 import { page } from '../animations/variants'
@@ -13,6 +13,7 @@ import { useStatus } from '../hooks/useStatus'
 
 export const NAV_ITEMS = [
   { to: '/', label: 'Overview', icon: Activity },
+  { to: '/change-intelligence', label: 'Change Intelligence', icon: GitPullRequest },
   { to: '/architecture', label: 'Architecture', icon: Workflow },
   { to: '/prediction', label: 'Failure Prediction', icon: Radar },
   { to: '/lab', label: 'What-If Lab', icon: Beaker },
@@ -20,6 +21,7 @@ export const NAV_ITEMS = [
   { to: '/insights', label: 'Insights', icon: Lightbulb },
   { to: '/experiments', label: 'Experiments', icon: FlaskConical },
   { to: '/reports', label: 'Reports', icon: FileText },
+  { to: '/guide', label: 'Engineering Guide', icon: BookOpen },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 

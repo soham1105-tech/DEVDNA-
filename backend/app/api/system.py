@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.ai.gemma import gemma
 from app.api.deps import get_project
+from app.config import settings
 from app.db import get_db
 from app.experiments.runner import docker_available
 from app.models import Experiment, ReportRecord
@@ -32,7 +33,18 @@ def health(db: Session = Depends(get_db)):
                             content={"status": "degraded", "version": VERSION, "database": "error",
                                      "ai": {"configured": gemma.configured, "model": gemma.model}})
     return {"status": "ok", "version": VERSION, "database": database,
+            "experiments_enabled": settings.experiments_enabled,
             "ai": {"configured": gemma.configured, "model": gemma.model}}
+
+
+@router.get("/ready")
+def ready(db: Session = Depends(get_db)):
+    """Readiness probe for Cloud Run / load balancers. Fails closed (503) if DB is unreachable."""
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse(status_code=503, content={"status": "not_ready", "database": "error"})
+    return {"status": "ready", "version": VERSION, "database": "ok"}
 
 
 @router.get("/ai/status")
@@ -40,7 +52,7 @@ def ai_status(check: bool = False):
     """AI configuration. With ?check=true, asks the Gemini API whether the configured model is accessible."""
     if check and gemma.configured:
         gemma.check_model()
-    return {**gemma.status(), "docker_sandbox": docker_available()}
+    return {**gemma.status(), "docker_sandbox": docker_available(), "experiments_enabled": settings.experiments_enabled}
 
 
 def _download(db: Session, project_id: str, kind: str, subject_id: str, fmt: str, body: str, filename: str):

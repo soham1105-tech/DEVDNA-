@@ -14,7 +14,7 @@ export default function ProjectGate({ children }) {
       <EmptyState
         icon={FolderSearch}
         title="No project selected"
-        description="Analyse a repository or explore the bundled demo project to get started."
+        description="Analyse a repository or explore the bundled sample project to get started."
         action={<Button variant="primary" onClick={ctx.openNewProject}>New project</Button>}
       />
     )

@@ -93,4 +93,17 @@ describe('WhatIfLab dynamic scenario consent', () => {
       expect(api.dynamicScenario).toHaveBeenCalledWith('p1', { prompt: 'Database connection pool exhaustion', consent: true })
     })
   })
+
+  it('shows execution environment guarantees and explains standard primitives vs AI scenarios on step 0', () => {
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <WhatIfLab />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText('Controlled validation')).toBeInTheDocument()
+    expect(screen.getByText(/execution environment/i)).toBeInTheDocument()
+    expect(screen.getByText(/standard primitives vs\. ai scenarios/i)).toBeInTheDocument()
+    expect(screen.getByText(/local restricted harness/i)).toBeInTheDocument()
+  })
 })

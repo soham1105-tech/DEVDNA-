@@ -55,3 +55,57 @@ def test_health_degraded_is_503(client):
     # headers still applied on the error path
     assert r.headers["x-content-type-options"] == "nosniff"
     assert r.headers["x-request-id"]
+
+
+def test_ready_probe_ok_and_token_exempt(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "api_token", "prod-secret-token")
+    r = client.get("/api/ready")
+    assert r.status_code == 200
+    assert r.json()["status"] == "ready"
+    assert r.json()["database"] == "ok"
+
+
+def test_experiments_disabled_blocks_even_trusted_sample(monkeypatch):
+    from app.config import settings
+    from app.experiments.runner import choose_mode
+
+    monkeypatch.setattr(settings, "experiments_enabled", False)
+    mode, reason = choose_mode(trusted=True)
+    assert mode == "blocked"
+    assert "DEVDNA_EXPERIMENTS_ENABLED=false" in reason
+
+
+def test_delete_project_removes_change_analyses(client):
+    proj_id = client.post("/api/projects/sample").json()["project"]["id"]
+    r = client.post(
+        f"/api/projects/{proj_id}/change-intelligence/analyze",
+        json={"files": ["shoplite/db.py"], "run_validation": False, "request_ai": False},
+    )
+    assert r.status_code == 200
+    assert len(client.get(f"/api/projects/{proj_id}/change-intelligence").json()) == 1
+
+    assert client.delete(f"/api/projects/{proj_id}").status_code == 204
+    from app import db as dbmod
+    from app.models import ChangeAnalysis
+    from sqlalchemy import select
+
+    db = dbmod.SessionLocal()
+    try:
+        remaining = db.scalars(select(ChangeAnalysis).where(ChangeAnalysis.project_id == proj_id)).all()
+        assert remaining == []
+    finally:
+        db.close()
+
+
+def test_scenarios_include_scale_context_metrics(client, sample_project):
+    r = client.get(f"/api/projects/{sample_project}/scenarios")
+    assert r.status_code == 200
+    db_scenario = next(s for s in r.json() if s["id"] == "db_unavailable")
+    assert db_scenario["supported"] is True
+    target = db_scenario["targets"][0]
+    assert target["non_test_total"] > 0
+    assert "routes_depending" in target
+    assert "tests_covering" in target
+    assert 0.0 <= target["criticality"] <= 100.0

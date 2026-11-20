@@ -1,6 +1,8 @@
-# DevDNA: The AI-Powered Digital Twin for Software Reliability
+# DevDNA — Change Impact Intelligence
 
 <div align="center">
+
+**Know what breaks before production does.**
 
 [![CI](https://github.com/soham1105-tech/DEVDNA-/actions/workflows/ci.yml/badge.svg)](https://github.com/soham1105-tech/DEVDNA-/actions)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white)](https://python.org)
@@ -9,11 +11,11 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4.1-38bdf8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Google Gemma](https://img.shields.io/badge/Model-Gemma_4_26B-8b5cf6?logo=google&logoColor=white)](https://ai.google.dev/gemma)
 
-**Predict failure blast radius in Python & JavaScript/TypeScript codebases, prove or disprove the prediction by injecting faults into real pytest and Jest test suites, audit AI-agent configurations for security risks, and turn every experiment into a durable reliability memory.**
+**Analyse code changes against deterministic Python & JavaScript/TypeScript dependency graphs, predict affected components and API routes, select prioritized tests, validate predictions with controlled fault-injection experiments, and audit AI-agent configurations.**
 
 Built by Soham Ray and Subha Parida — original engine by Subha Parida, fork development led by Soham Ray. See [AUTHORS](AUTHORS.md).
 
-[Explore Architecture](docs/ARCHITECTURE.md) • [Algorithm Reference](docs/ALGORITHM.md) • [Security & Isolation](docs/SECURITY.md) • [AgentGuard](docs/AGENTGUARD.md) • [Change Impact](docs/CHANGE_IMPACT.md) • [Test Gaps](docs/TEST_GAPS.md) • [Remediation](docs/REMEDIATION.md) • [Reliability](docs/RELIABILITY.md) • [PR Review](docs/PR_REVIEW.md) • [Production Checklist](docs/PRODUCTION_CHECKLIST.md) • [Contributing](CONTRIBUTING.md)
+[Explore Architecture](docs/ARCHITECTURE.md) • [Algorithm Reference](docs/ALGORITHM.md) • [Security & Isolation](docs/SECURITY.md) • [AgentGuard](docs/AGENTGUARD.md) • [Change Impact](docs/CHANGE_IMPACT.md) • [Test Gaps](docs/TEST_GAPS.md) • [Remediation](docs/REMEDIATION.md) • [Reliability](docs/RELIABILITY.md) • [PR Review](docs/PR_REVIEW.md) • [GCP Deployment](docs/DEPLOYMENT.md) • [Production Checklist](docs/PRODUCTION_CHECKLIST.md) • [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -141,6 +143,82 @@ All of these surface in the frontend under **Insights** (`/insights`).
 * **Predictions vs observations:** impact entries are `possible` / `may_break`, never "will fail"; experiment comparisons report a confusion matrix, not a verdict.
 * **Evidence + provenance + confidence** on every finding; secret values are redacted before they ever leave the analyzer.
 * **No fabricated metrics:** confidence scores, risk scores and calibration rates all state their sample sizes; thresholds below the floor answer `insufficient_data`.
+
+---
+
+## 4c. DevDNA Change Intelligence: Pre-Merge Blast Radius & Risk Platform
+
+> **"Know what your code change could break before you merge it."**
+
+DevDNA Change Intelligence extends the digital twin into an active, change-aware reliability platform. Rather than acting as another passive AI code linter, Change Intelligence evaluates pull requests, git diffs, and commit branches against the base dependency graph to predict cascading failure propagation, rank relevant tests, run controlled empirical validation, and deliver evidence-backed merge recommendations.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                             DevDNA Change Intelligence Engine                          │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 1. CHANGE DETECTION        │ Unified diff parsing • AST function, class & import diff  │
+│ 2. GRAPH PROPAGATION DIFF  │ Base vs modified MultiDiGraph • Direct & transitive hops   │
+│ 3. CHANGE RISK SCORING     │ 6 weighted factors (0-100) + quantified uncertainty score │
+│ 4. TEST PRIORITISATION     │ 5-tier ranked test suite by proximity & route exposure    │
+│ 5. CONTROLLED VALIDATION   │ Fault injection experiment • Confusion matrix (TP/FP/FN)  │
+│ 6. MERGE RECOMMENDATION    │ APPROVE / REVIEW REQUIRED / BLOCK RECOMMENDED decisions   │
+│ 7. GROUNDED AI EXPLAINER   │ Gemini narrative of propagation paths & repair safeguards  │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Core Change Intelligence Capabilities
+
+1. **AST-Enriched Change Detection (`services/change_detection.py`):**
+   - Parses unified diffs, modified files, additions, and deletions.
+   - For Python files, extracts changed functions, classes, and import declarations with line numbers via AST visitor traversal.
+2. **Before-and-After Dependency Analysis (`services/graph_diff.py`):**
+   - Compares the base NetworkX MultiDiGraph against the modified revision.
+   - Categorizes impacted nodes into:
+     - **Directly Modified**: Roots of the diff.
+     - **Transitively Affected**: Downstream dependents with exact hop distances.
+     - **Impacted API Routes**: Client-facing endpoints reachable along propagation paths.
+     - **Associated Tests**: Test nodes directly or transitively linked to modified components.
+     - **Newly Introduced / Removed Dependencies**: Architectural edge changes.
+3. **Transparent Multi-Factor Risk Assessment (`services/change_risk.py`):**
+   - Explainable score (0–100) combining 6 weighted factors:
+     - **Blast Radius** (25%): Proportional reach of failure propagation.
+     - **Component Criticality** (20%): Centrality and route-share of affected nodes.
+     - **Route Exposure** (20%): Number of public API endpoints touched.
+     - **Relevant Test Coverage** (15%): Direct and transitive test suite presence.
+     - **Static Finding Severity** (10%): High/medium static security and reliability findings.
+     - **Historical Reliability Calibration** (10%): Past empirical track record from Reliability Memory.
+   - Includes **Uncertainty Quantification** with explicit static call graph limitations.
+4. **5-Tiered Intelligent Test Prioritisation (`services/test_prioritization.py`):**
+   - **Tier 1 (Direct)**: Tests directly exercising modified functions/classes.
+   - **Tier 2 (Direct Dependents)**: Tests covering components that immediately call changed code.
+   - **Tier 3 (Transitive Dependents)**: Tests covering 2+ hop downstream components.
+   - **Tier 4 (API Routes)**: End-to-end integration tests for exposed endpoints.
+   - **Tier 5 (Regression)**: Broader system regression tests.
+5. **Controlled Empirical Validation (`services/change_validation.py`):**
+   - Executes baseline tests vs. faulted tests in an isolated sandbox.
+   - Validates whether predicted failures actually manifest, returning an empirical confusion matrix (True Positives, False Positives, False Negatives).
+6. **Evidence-Backed Merge Recommendations (`services/merge_recommendation.py`):**
+   - **`APPROVE`**: Low risk within analyzed scope with validated stability.
+   - **`REVIEW REQUIRED`**: Meaningful blast radius, route exposure, or missing Tier 1 tests.
+   - **`BLOCK RECOMMENDED`**: High-severity findings or confirmed empirical breakages.
+7. **Gemini Grounded Reasoning Layer (`ai/change_explainer.py`):**
+   - Translates deterministic graph facts into human-readable narratives explaining what changed, why it's risky, and recommended architectural safeguards.
+   - Deterministic offline fallback when Gemini is unavailable.
+8. **Interactive Change Intelligence Dashboard (`/change-intelligence`):**
+   - 6 tabbed views: **Change Overview**, **Impact Graph**, **Risk Breakdown**, **Test Intelligence**, **Validation Report**, and **AI Explanation**.
+   - Includes a one-click **"Run Buildathon Demo: DB Handler"** scenario for instant live evaluation.
+
+### API & CLI Usage
+
+| Action | Endpoint / CLI Command | Description |
+| :--- | :--- | :--- |
+| **Analyze Change** | `POST /api/projects/{id}/change-intelligence/analyze` | Run full change analysis on a file list or unified diff |
+| **List Analyses** | `GET /api/projects/{id}/change-intelligence` | Query historical change analyses for a project |
+| **Get Analysis** | `GET /api/projects/{id}/change-intelligence/{analysis_id}` | Retrieve complete analysis report and evidence |
+| **Run Validation** | `POST /api/projects/{id}/change-intelligence/{analysis_id}/validate` | Trigger isolated empirical fault injection |
+| **Buildathon Demo** | `POST /api/projects/{id}/change-intelligence/demo` | Run the bundled database handler modification demo |
+| **CLI Analysis** | `python -m app.cli <path> --change-intelligence --diff-file diff.patch` | Run Change Intelligence from terminal / CI |
+| **GitHub Action** | `.github/workflows/pr-impact.yml` | Automatic PR check runs & comments on pull requests |
 
 ---
 
@@ -320,10 +398,13 @@ Open **`http://localhost:5173`** in your browser.
 DevDNA maintains a comprehensive automated test suite across backend algorithms, security boundaries, and UI components:
 
 ```bash
-# Run backend pytest suite (298 passed, 1 skipped)
+# Run backend pytest suite (305 passed, 7 skipped when Docker/Jest fixtures absent)
 cd backend && python -m pytest -q
 
-# Run frontend Vitest suite (27 tests)
+# Run AST engine pytest suite (8 passed)
+cd ast-engine && python -m pytest -q
+
+# Run frontend Vitest suite (42 tests)
 cd frontend && npm test -- --run
 
 # Compile frontend production bundle
@@ -430,7 +511,10 @@ DEVDNA/
 │   ├── REMEDIATION.md          # Patch verification on a disposable copy
 │   ├── RELIABILITY.md          # Track-record aggregation of experiment outcomes
 │   ├── PR_REVIEW.md            # Deterministic PR review package
+│   ├── DEPLOYMENT.md           # Google Cloud deployment, IAM, cost, rollback
 │   └── PRODUCTION_CHECKLIST.md # Deployment config + runtime hardening + ops
+├── deploy/                     # Cloud Build CI/CD & GCP deployment scripts
+├── firebase.json               # Firebase Hosting SPA + Cloud Run rewrites
 ├── action.yml                  # Public composite Action for PR impact checks
 ├── backend/                    # FastAPI Backend Service
 │   ├── app/
@@ -439,20 +523,21 @@ DEVDNA/
 │   │   ├── agentguard/         # AI-agent config parsers, rules, permission graph
 │   │   ├── ai/                 # Gemma 4 integration (gemma-4-26b-a4b-it, retry loop)
 │   │   ├── analyzer/           # Python AST parser (+ JS/TS via AST engine), redaction
-│   │   ├── api/                # REST endpoints (projects, predictions, experiments, agentguard, pr_review)
+│   │   ├── api/                # REST endpoints (projects, predictions, experiments, agentguard, pr_review, change_intelligence)
 │   │   ├── experiments/        # What-If runner (pytest + Jest) and devdna_faults plugin
 │   │   ├── graph/              # NetworkX MultiDiGraph engine and Dual BFS
 │   │   ├── models/             # SQLAlchemy database models
-│   │   └── services/           # Findings rules, change impact, test gaps, remediation,
-│   │                           #   reliability memory, PR review, calibration, reports
-│   ├── tests/                  # 298 automated pytest unit and integration tests
+│   │   └── services/           # Findings rules, change impact, change intelligence, test gaps,
+│   │                           #   remediation, reliability memory, PR review, calibration, reports
+│   ├── tests/                  # 305+ automated pytest unit and integration tests
 │   ├── sample_project/         # ShopLite reference e-commerce repository
 │   └── requirements.txt        # Backend dependencies
 ├── frontend/                   # React 18 + Vite Web Application
 │   ├── src/
-│   │   ├── components/         # AIPanel, NewProjectModal, ImpactView, PredictionVsReality
+│   │   ├── components/         # AIPanel, NewProjectModal, ImpactView, TermExplainer, ExplainAnalysisButton
+│   │   ├── data/               # Structured Engineering Glossary (20+ terms, Beginner & Technical modes)
 │   │   ├── layouts/            # AppLayout with theme toggle and global shortcuts
-│   │   ├── pages/              # Overview, Architecture, What-If Lab, Findings, Insights, Reports
+│   │   ├── pages/              # Overview, Architecture, What-If Lab, Findings, Insights, ChangeIntelligence, EngineeringGuide, Reports
 │   │   └── index.css           # Tailwind CSS 4 theme tokens & Bright mode overrides
 │   └── package.json            # Frontend dependencies
 ├── ast-engine/                 # Standalone JS/TS complexity analyser (port 8001)

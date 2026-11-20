@@ -209,13 +209,24 @@ def scenarios(project_id: str, db: Session = Depends(get_db)):
     p = get_project(db, project_id)
     run = require_run(db, p)
     comps, _, _ = load_graph(db, run.id)
+    non_test_total = sum(1 for c in comps if c["type"] != "test")
+    routes_total = sum(1 for c in comps if c["type"] == "route")
     out = []
     for key, spec in SCENARIOS.items():
-        targets = [{"id": c["id"], "name": c["name"], "type": c["type"], "criticality": c["metrics"].get("criticality"),
-                    "dependents": c["metrics"].get("dependents")}
-                   for c in comps if c["type"] in spec["target_types"]]
+        targets = [{
+            "id": c["id"],
+            "name": c["name"],
+            "type": c["type"],
+            "criticality": c["metrics"].get("criticality", 0.0),
+            "dependents": c["metrics"].get("dependents", 0),
+            "routes_depending": c["metrics"].get("routes_depending", 0),
+            "tests_covering": c["metrics"].get("tests_covering", 0),
+            "non_test_total": non_test_total,
+            "routes_total": routes_total,
+        } for c in comps if c["type"] in spec["target_types"]]
         out.append({"id": key, "label": spec["label"], "fault": spec["fault"], "target_types": spec["target_types"],
-                    "targets": sorted(targets, key=lambda t: -(t["criticality"] or 0)), "supported": bool(targets)})
+                    "targets": sorted(targets, key=lambda t: (-(t["criticality"] or 0), -(t["dependents"] or 0))),
+                    "supported": bool(targets)})
     return out
 
 

@@ -61,6 +61,12 @@ def docker_available() -> bool:
 
 
 def choose_mode(trusted: bool) -> tuple[str, str | None]:
+    if not settings.experiments_enabled:
+        return "blocked", (
+            "Experiment execution is disabled on this server (DEVDNA_EXPERIMENTS_ENABLED=false). "
+            "Static analysis and change-impact predictions remain available; untrusted code is never executed "
+            "inside the API container."
+        )
     if trusted:
         return "local_harness", None
     if docker_available():

@@ -87,7 +87,7 @@ function Dashboard({ project }) {
     <>
       <PageHeader
         title={project.name}
-        subtitle={`${project.source_type === 'sample' ? 'Bundled demo' : project.source_type === 'upload' ? 'Uploaded ZIP' : project.source_type === 'github' ? 'GitHub repository' : 'Local folder'} · analysed ${timeAgo(project.latest_run?.finished_at)} · ${a.frameworks.join(', ') || 'no frameworks detected'}`}
+        subtitle={`${project.source_type === 'sample' ? 'Sample project' : project.source_type === 'upload' ? 'Uploaded ZIP' : project.source_type === 'github' ? 'GitHub repository' : 'Local folder'} · analysed ${timeAgo(project.latest_run?.finished_at)} · ${a.frameworks.join(', ') || 'no frameworks detected'}`}
         actions={
           <>
             {project.analysis_only && (
@@ -106,8 +106,9 @@ function Dashboard({ project }) {
         <div className="mb-4 flex items-start gap-2.5 rounded-card border border-warning/25 bg-warning-bg px-4 py-3 text-sm text-muted">
           <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           <span>
-            <span className="font-medium text-ink">Analysis only.</span> Analysis and predictions are available, but
-            experiments cannot verify them for JavaScript/TypeScript-only projects (experiments run a Python pytest suite).
+            <span className="font-medium text-ink">Analysis only.</span> Analysis and predictions are available.
+            JavaScript/TypeScript experiments require a Jest test script, and untrusted JavaScript projects are blocked
+            until a Docker JavaScript sandbox is available; Vitest and unrecognised runners are never guessed.
           </span>
         </div>
       )}
@@ -166,10 +167,10 @@ function Dashboard({ project }) {
             <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
               <div>
                 <div className="flex items-center gap-1.5 text-xs font-medium text-faint">
-                  <Sparkles className="h-3.5 w-3.5" /> 3-Minute Hackathon Demo Scenarios
+                  <Sparkles className="h-3.5 w-3.5" /> Guided Failure Scenarios (Sample Project)
                 </div>
                 <p className="mt-0.5 text-xs text-muted sm:text-sm">
-                  Click any scenario to predict its blast radius, inspect cited evidence, and prove it with real pytest execution:
+                  Select a scenario to predict its blast radius, inspect cited evidence, and verify with controlled pytest execution:
                 </p>
               </div>
               <Link to="/lab" className="shrink-0 text-xs font-medium text-accent hover:underline">
@@ -179,15 +180,15 @@ function Dashboard({ project }) {
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               {[
                 {
-                  to: '/lab?scenario=db_unavailable', icon: Database, title: 'Database Outage', verdict: '100% Confirmed', verdictCls: 'text-positive',
+                  to: '/lab?scenario=db_unavailable', icon: Database, title: 'Database Outage', verdict: 'Expected: Confirmed', verdictCls: 'text-positive',
                   body: 'Simulates SQLite crash. Cascades through startup into 6/6 routes and 8 failing tests.',
                 },
                 {
-                  to: '/lab?scenario=external_api_unavailable', icon: Globe, title: 'Shipping API Outage', verdict: 'Partially Confirmed', verdictCls: 'text-warning',
+                  to: '/lab?scenario=external_api_unavailable', icon: Globe, title: 'Shipping API Outage', verdict: 'Expected: Partial', verdictCls: 'text-warning',
                   body: 'Injects HTTP ConnectError. Discovers FastAPI 422 validation short-circuit before handler.',
                 },
                 {
-                  to: '/lab?scenario=worker_unavailable', icon: Cog, title: 'Worker Unavailable', verdict: 'Handled Error', verdictCls: 'text-muted',
+                  to: '/lab?scenario=worker_unavailable', icon: Cog, title: 'Worker Unavailable', verdict: 'Expected: Handled', verdictCls: 'text-muted',
                   body: 'Thread worker never starts. Reveals try/except handler and reports uncertainty.',
                 },
               ].map((s) => (

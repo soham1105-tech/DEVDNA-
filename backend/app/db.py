@@ -119,7 +119,13 @@ def init_engine(url: str | None = None):
         engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": SQLITE_BUSY_TIMEOUT_MS / 1000})
         event.listen(engine, "connect", _configure_sqlite)
     else:
-        engine = create_engine(url)
+        engine = create_engine(
+            url,
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=10,
+            pool_recycle=1800,
+        )
     SessionLocal.configure(bind=engine)
     from app import models  # noqa: F401  (register tables)
 

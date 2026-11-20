@@ -1,0 +1,79 @@
+{
+  "hosting": {
+    "public": "frontend/dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "devdna-backend",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/docs",
+        "run": {
+          "serviceId": "devdna-backend",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/openapi.json",
+        "run": {
+          "serviceId": "devdna-backend",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/redoc",
+        "run": {
+          "serviceId": "devdna-backend",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/ast/**",
+        "run": {
+          "serviceId": "devdna-ast-engine",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "/assets/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          },
+          {
+            "key": "X-Frame-Options",
+            "value": "DENY"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "strict-origin-when-cross-origin"
+          }
+        ]
+      }
+    ]
+  }
+}

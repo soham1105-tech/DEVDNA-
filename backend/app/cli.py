@@ -213,9 +213,63 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Exit 1 when an impacted route has no statically mapped predicted-failing test",
     )
+    parser.add_argument("--diff-file", type=Path, help="Unified git diff file to analyze")
+    parser.add_argument(
+        "--change-intelligence",
+        action="store_true",
+        help="Generate comprehensive DevDNA Change Intelligence report with risk score and merge recommendation",
+    )
     args = parser.parse_args(argv)
 
     try:
+        if args.change_intelligence or args.diff_file:
+            from app.services.change_detection import parse_unified_diff, build_change_manifest, enrich_file_changes_with_ast
+            from app.services.graph_diff import diff_dependency_graphs
+            from app.services.change_risk import calculate_change_risk
+            from app.services.test_prioritization import prioritize_tests
+            from app.services.merge_recommendation import generate_merge_recommendation
+            from app.services.github_webhook import render_change_intelligence_markdown
+
+            diff_text = args.diff_file.read_text(encoding="utf-8") if args.diff_file else ""
+            file_changes = parse_unified_diff(diff_text) if diff_text else []
+            if not file_changes:
+                changed_files_list = (
+                    args.changed_files_file.read_text(encoding="utf-8").splitlines()
+                    if args.changed_files_file else []
+                )
+                changed_files_list.extend(args.changed_file)
+                from app.services.change_detection import FileChange
+                for f in changed_files_list:
+                    file_changes.append(FileChange(path=_relative_file(f), status="modified"))
+            enrich_file_changes_with_ast(file_changes, base_root=args.repo, head_root=args.repo)
+            change_manifest = build_change_manifest(file_changes)
+
+            analysis = analyse_repository(args.repo)
+            graph = build_graph(analysis["components"], analysis["edges"])
+            changed_file_paths = [f["path"] for f in change_manifest["files"]]
+            changed_components = [c for f in change_manifest["files"] for c in f.get("changed_components", [])]
+
+            graph_diff = diff_dependency_graphs(graph, graph.copy(), changed_components, changed_file_paths)
+            prioritized = prioritize_tests(graph, graph_diff)
+            total_routes = sum(1 for _, d in graph.nodes(data=True) if d.get("type") == "route")
+            risk_calc = calculate_change_risk(None, "cli", graph_diff, [], [], total_routes_in_repo=total_routes)
+            rec = generate_merge_recommendation(risk_calc, graph_diff, prioritized, [], None)
+
+            report = {
+                "repository": str(args.repo),
+                "mode": "change_intelligence",
+                "diff_manifest": change_manifest,
+                "graph_diff": graph_diff,
+                "risk_assessment": risk_calc,
+                "prioritized_tests": prioritized,
+                "recommendation": rec,
+            }
+            markdown = render_change_intelligence_markdown(report)
+            _write_output(args.markdown_output, markdown)
+            if args.json_output:
+                _write_output(args.json_output, json.dumps(report, indent=2, sort_keys=True) + "\n")
+            return 1 if (args.fail_on_uncovered_route and rec["decision"] == "BLOCK RECOMMENDED") else 0
+
         changed_files = (
             args.changed_files_file.read_text(encoding="utf-8").splitlines()
             if args.changed_files_file else []

@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { CheckCircle2, Download, FileJson, FileText, History, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { stagger } from '../animations/variants'
+import ExplainAnalysisButton from '../components/ExplainAnalysisButton'
 import ProjectGate from '../components/ProjectGate'
 import { Badge, Button, Card, CardHeader, ErrorState, PageHeader, StatusBadge } from '../components/ui'
 import { useAsync } from '../hooks/useAsync'
@@ -37,7 +38,11 @@ function ReportsPage({ project }) {
 
   return (
     <>
-      <PageHeader title="Reports and audit trail" subtitle="Downloadable Markdown and JSON built from persisted records. Credentials and secret-looking values are redacted." />
+      <PageHeader
+        title="Reports and audit trail"
+        subtitle="Downloadable Markdown and JSON built from persisted records. Credentials and secret-looking values are redacted."
+        actions={<ExplainAnalysisButton kind="reports" data={{ reports: history.data || [], experiments: exps.data || [], aiLogs: ai.data || [] }} />}
+      />
       {error && <div className="mb-4"><ErrorState error={error} /></div>}
       {done && (
         <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="mb-4 flex items-center gap-2 rounded-card border border-positive/25 bg-positive-bg px-3 py-2 text-sm text-ink">

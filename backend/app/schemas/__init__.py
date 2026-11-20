@@ -78,3 +78,14 @@ class FindingSuppressionIn(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
     owner: str = Field(min_length=1, max_length=500)
     expires_at: datetime
+
+
+class ChangeIntelligenceIn(BaseModel):
+    files: list[str] | None = Field(default=None, max_length=200, description="Optional list of changed file paths.")
+    diff_text: str | None = Field(default=None, max_length=500_000, description="Optional unified git diff string.")
+    base_ref: str | None = Field(default=None, max_length=255, description="Optional base git ref or commit SHA.")
+    head_ref: str | None = Field(default=None, max_length=255, description="Optional head git ref or commit SHA.")
+    run_validation: bool = Field(default=False, description="Whether to execute controlled validation harness.")
+    title: str | None = Field(default=None, max_length=255, description="Optional title or PR name.")
+    request_ai: bool = Field(default=True, description="Whether to request grounded AI explanation.")
+

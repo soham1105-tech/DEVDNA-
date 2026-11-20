@@ -3,7 +3,7 @@ import { readStore, writeStore } from './storage'
 
 const SettingsContext = createContext(null)
 
-const DEFAULTS = { motion: 'system', consentMode: 'ask', theme: 'dark' }
+const DEFAULTS = { motion: 'system', consentMode: 'ask', theme: 'dark', learningMode: 'technical' }
 
 /** Per-browser UI preferences: motion level, theme (dark/bright), and AI consent behaviour. */
 export function SettingsProvider({ children }) {

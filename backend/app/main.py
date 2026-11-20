@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import db as dbmod
-from app.api import agentguard, ai, architecture, experiments, guard, hardening, pr_review, projects, system, traces
+from app.api import agentguard, ai, architecture, change_intelligence, experiments, guard, hardening, pr_review, projects, system, traces
 from app.api.experiments import recover_stale_experiments
 from app.config import settings
 
@@ -23,8 +23,6 @@ async def lifespan(app: FastAPI):
         dbmod.init_engine()
     settings.projects_dir.mkdir(parents=True, exist_ok=True)
     recover_stale_experiments()
-    from app.api.projects import recover_stale_analysis_runs
-    recover_stale_analysis_runs()
     from app.api.projects import recover_stale_analysis_runs
     recover_stale_analysis_runs()
     if not settings.api_token and not settings.local_only:
@@ -44,7 +42,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="DevDNA API",
     version=system.VERSION,
-    description="AI-powered digital twin for software systems: discover, visualise, predict, experiment, compare.",
+    description="Change Impact Intelligence platform: analyse architecture, predict blast radius, and validate with controlled experiments.",
     lifespan=lifespan,
 )
 # Guard first (innermost) so CORS stays the outermost layer and error
@@ -77,5 +75,5 @@ async def unhandled(request: Request, exc: Exception):
                                                             "message": "Unexpected server error. Check the backend logs."}})
 
 
-for r in (system.router, projects.router, architecture.router, experiments.router, ai.router, traces.router, agentguard.router, pr_review.router):
+for r in (system.router, projects.router, architecture.router, experiments.router, ai.router, traces.router, agentguard.router, pr_review.router, change_intelligence.router):
     app.include_router(r)

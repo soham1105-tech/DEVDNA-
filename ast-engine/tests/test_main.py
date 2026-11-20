@@ -122,3 +122,10 @@ def test_github_missing_repo_is_404(monkeypatch):
         "/analyze/repo", params={"owner": "acme", "repo": "ghost"})
     assert response.status_code == 404
     assert "not found" in response.json()["detail"]
+
+
+def test_health_endpoint_is_token_exempt(monkeypatch):
+    monkeypatch.setenv("AST_ENGINE_API_TOKEN", "secret-engine-token")
+    response = TestClient(main.app).get("/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"

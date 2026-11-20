@@ -128,6 +128,13 @@ export const api = {
   testGaps: (id) => call('get', `/api/projects/${id}/test-gaps`),
   reliability: (id) => call('get', `/api/projects/${id}/reliability`),
   prReview: (id, body) => call('post', `/api/projects/${id}/pr-review`, body),
+
+  // Change Intelligence platform layer
+  analyzeChange: (id, body) => call('post', `/api/projects/${id}/change-intelligence/analyze`, body),
+  listChangeAnalyses: (id, params) => call('get', `/api/projects/${id}/change-intelligence`, null, { params }),
+  getChangeAnalysis: (id, analysisId) => call('get', `/api/projects/${id}/change-intelligence/${analysisId}`),
+  validateChangeAnalysis: (id, analysisId) => call('post', `/api/projects/${id}/change-intelligence/${analysisId}/validate`),
+  runChangeDemo: (id) => call('post', `/api/projects/${id}/change-intelligence/demo`),
 }
 
 /** Download a report file through the API and save it in the browser. */

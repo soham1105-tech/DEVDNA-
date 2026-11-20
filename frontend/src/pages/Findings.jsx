@@ -3,6 +3,7 @@ import { ChevronDown, Network, ShieldAlert } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { EvidenceList } from '../components/graph/ComponentDrawer'
+import ExplainAnalysisButton from '../components/ExplainAnalysisButton'
 import ProjectGate from '../components/ProjectGate'
 import { Badge, Button, Card, EmptyState, ErrorState, PageHeader, SeverityBadge, Skeleton } from '../components/ui'
 import { useAsync } from '../hooks/useAsync'
@@ -185,7 +186,11 @@ function FindingsPage({ project }) {
 
   return (
     <>
-      <PageHeader title="Reliability findings" subtitle="Deterministic rules applied to the analysed graph. Each finding lists its evidence, confidence, assumptions and a mitigation. Severity rules are documented in the README." />
+      <PageHeader
+        title="Reliability findings"
+        subtitle="Deterministic rules applied to the analysed graph. Each finding lists its evidence, confidence, assumptions and a mitigation. Severity rules are documented in the README."
+        actions={<ExplainAnalysisButton kind="findings" data={{ items: visible }} />}
+      />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {['all', 'high', 'medium', 'low', 'info'].map((s) => (
           <button key={s} onClick={() => setSeverity(s)} aria-pressed={severity === s} className={`relative rounded-control px-3 py-1.5 text-xs font-medium ${severity === s ? 'bg-raised text-ink' : 'text-faint hover:text-muted'}`}>
