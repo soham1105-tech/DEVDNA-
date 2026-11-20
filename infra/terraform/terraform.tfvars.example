@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (never commit terraform.tfvars with real environment values)
+project_id       = "YOUR_GCP_PROJECT_ID"
+region           = "us-central1"
+environment      = "production"
+backend_image    = "us-central1-docker.pkg.dev/YOUR_GCP_PROJECT_ID/devdna/devdna-backend:latest"
+ast_engine_image = "us-central1-docker.pkg.dev/YOUR_GCP_PROJECT_ID/devdna/devdna-ast-engine:latest"
+cors_origins     = "https://YOUR_GCP_PROJECT_ID.web.app,https://YOUR_GCP_PROJECT_ID.firebaseapp.com"
+sql_tier         = "db-f1-micro"

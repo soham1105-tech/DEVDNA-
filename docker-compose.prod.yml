@@ -1,0 +1,56 @@
+# Production-parity local simulation using PostgreSQL 16, fail-closed token auth,
+# structured JSON logging, and disabled in-container untrusted experiments.
+#
+# Usage:
+#   DEVDNA_API_TOKEN=change-me-local-prod-token docker compose -f docker-compose.prod.yml up --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: devdna
+      POSTGRES_USER: devdna
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devdna_local_prod_pw}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devdna -d devdna"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DEVDNA_DATABASE_URL: postgresql+psycopg://devdna:${POSTGRES_PASSWORD:-devdna_local_prod_pw}@postgres:5432/devdna
+      DEVDNA_API_TOKEN: ${DEVDNA_API_TOKEN:?Set DEVDNA_API_TOKEN}
+      DEVDNA_EXPERIMENTS_ENABLED: "false"
+      DEVDNA_LOG_FORMAT: json
+      DEVDNA_CORS_ORIGINS: http://localhost:8080
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+
+  ast-engine:
+    build: ./ast-engine
+    ports:
+      - "8001:8001"
+    environment:
+      AST_ENGINE_API_TOKEN: ${DEVDNA_API_TOKEN:?Set DEVDNA_API_TOKEN}
+      AST_ENGINE_CORS_ORIGINS: http://localhost:8080
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_AST_ENGINE_URL: /ast
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+      - ast-engine
+
+volumes:
+  pg-data:

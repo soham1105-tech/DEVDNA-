@@ -13,9 +13,12 @@ never funnelled through an anyio worker thread.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 import uuid
+
+from app.config import settings
 
 log = logging.getLogger("devdna.access")
 
@@ -53,8 +56,21 @@ class RequestIdMiddleware:
             duration_ms = (time.perf_counter() - started) * 1000
             path = scope.get("path", "")
             if path not in ("/api/health", "/api/ready"):  # health/readiness probes would flood the log
-                log.info("%s %s -> %s (%.0f ms) request_id=%s", scope.get("method", "?"),
-                         path, status_holder["status"], duration_ms, request_id)
+                method = scope.get("method", "?")
+                status_code = status_holder["status"]
+                if settings.log_format == "json":
+                    log.info(json.dumps({
+                        "severity": "ERROR" if status_code >= 500 else ("WARNING" if status_code >= 400 else "INFO"),
+                        "message": f"{method} {path} -> {status_code}",
+                        "method": method,
+                        "path": path,
+                        "status": status_code,
+                        "duration_ms": round(duration_ms, 1),
+                        "request_id": request_id,
+                    }))
+                else:
+                    log.info("%s %s -> %s (%.0f ms) request_id=%s", method,
+                             path, status_code, duration_ms, request_id)
 
 
 class SecurityHeadersMiddleware:

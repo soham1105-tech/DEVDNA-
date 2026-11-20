@@ -1,6 +1,7 @@
 """Project ingestion (sample, ZIP upload, explicitly allowed local path) and analysis runs."""
 from __future__ import annotations
 
+import hmac
 import re
 import shutil
 from pathlib import Path
@@ -10,7 +11,8 @@ import httpx
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Query, UploadFile
+from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -28,6 +30,8 @@ from app.models import (
 from app.schemas import GitHubProjectIn, LocalProjectIn
 from app.services.analysis import run_analysis
 from app.services.serialize import project_out, run_out
+from app.services import storage as storage_svc
+from app.services.tasks import enqueue_analysis_run
 
 router = APIRouter(prefix="/api", tags=["projects"])
 log = logging.getLogger("devdna.projects")
@@ -63,7 +67,7 @@ def _start_run(db: Session, project: Project, background: BackgroundTasks) -> An
     run = AnalysisRun(project_id=project.id)
     db.add(run)
     db.commit()
-    background.add_task(run_analysis, run.id)
+    enqueue_analysis_run(run.id, background)
     return run
 
 
@@ -166,6 +170,9 @@ def _create_zip_project(
             "message": "No Python or JavaScript/TypeScript source files found. "
                        "DevDNA analyses Python and JavaScript/TypeScript projects."})
     stats.pop("sensitive_files", None)
+    gcs_uri = storage_svc.archive_project_zip(pid, data)
+    if gcs_uri:
+        stats["gcs_archive_uri"] = gcs_uri
     project = Project(id=pid, name=name[:200], source_type=source_type, source_path=str(dest), trusted=False,
                       **ast_repository,
                       ingest_stats={**stats, "files": scan["file_count"], "languages": scan["languages"]})
@@ -273,6 +280,7 @@ def delete_project(project_id: str, db: Session = Depends(get_db)):
     p = get_project(db, project_id)
     if p.source_type in ("sample", "upload", "github"):
         shutil.rmtree(settings.projects_dir / p.id, ignore_errors=True)
+        storage_svc.delete_project_artifacts(p.id)
     for model in (ChangeAnalysis, Experiment, Prediction, AIInteraction, ReportRecord, FindingSuppression, FindingSuppressionAudit, PredictionOutcome):
         db.query(model).filter(model.project_id == p.id).delete()
     db.delete(p)
@@ -303,3 +311,31 @@ def get_run(run_id: str, db: Session = Depends(get_db)):
     if not r:
         raise HTTPException(404, detail={"code": "run_not_found", "message": "Analysis run not found"})
     return run_out(r)
+
+
+class WorkerAnalyzeIn(BaseModel):
+    run_id: str
+
+
+@router.post("/internal/tasks/analyze", status_code=200)
+def worker_execute_analysis(
+    body: WorkerAnalyzeIn,
+    x_devdna_worker_secret: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Idempotent Cloud Tasks worker callback for durable repository analysis."""
+    if not settings.worker_secret:
+        raise HTTPException(503, detail={"code": "worker_not_configured", "message": "DEVDNA_WORKER_SECRET is not configured."})
+    if not x_devdna_worker_secret or not hmac.compare_digest(x_devdna_worker_secret, settings.worker_secret):
+        raise HTTPException(401, detail={"code": "unauthorized_worker", "message": "Invalid worker secret."})
+    run = db.get(AnalysisRun, body.run_id)
+    if not run:
+        raise HTTPException(404, detail={"code": "run_not_found", "message": "Analysis run not found"})
+    if run.status in ("completed", "running"):
+        return {"status": run.status, "idempotent_skip": True, "run_id": run.id}
+    project = db.get(Project, run.project_id)
+    if project:
+        storage_svc.ensure_local_source(project.id, Path(project.source_path))
+    run_analysis(run.id)
+    db.refresh(run)
+    return {"status": run.status, "idempotent_skip": False, "run_id": run.id}

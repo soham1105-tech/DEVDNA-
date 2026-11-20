@@ -54,6 +54,12 @@ class Settings:
     )
     # Optional Google Cloud Storage bucket for persistent uploads/reports in cloud deployments.
     gcs_bucket: str = field(default_factory=lambda: os.environ.get("DEVDNA_GCS_BUCKET", "").strip())
+    # Optional Cloud Tasks durable queue configuration (falls back to in-process BackgroundTasks when unset).
+    cloud_tasks_queue: str = field(default_factory=lambda: os.environ.get("DEVDNA_CLOUD_TASKS_QUEUE", "").strip())
+    worker_url: str = field(default_factory=lambda: os.environ.get("DEVDNA_WORKER_URL", "").strip())
+    worker_secret: str = field(default_factory=lambda: os.environ.get("DEVDNA_WORKER_SECRET", "").strip())
+    # Structured JSON logging for Google Cloud Logging ("json" | "text").
+    log_format: str = field(default_factory=lambda: os.environ.get("DEVDNA_LOG_FORMAT", "text").strip().lower())
     # Opt-in API auth: when DEVDNA_API_TOKEN is set, every /api route except
     # /api/health requires a matching X-DevDNA-Token header. Empty = local,
     # unauthenticated mode, which must be acknowledged with DEVDNA_LOCAL_ONLY

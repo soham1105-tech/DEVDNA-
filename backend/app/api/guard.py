@@ -106,7 +106,11 @@ class GuardMiddleware:
                 # only auth is exempt for /api/health; schema endpoints are
                 # guarded in token mode so the API schema cannot leak
                 token = settings.api_token
-                auth_exempt = path.startswith("/api") and path.rstrip("/") in ("/api/health", "/api/ready")
+                auth_exempt = path.startswith("/api") and path.rstrip("/") in (
+                    "/api/health",
+                    "/api/ready",
+                    "/api/internal/tasks/analyze",  # enforces its own X-DevDNA-Worker-Secret
+                )
                 if token and not auth_exempt:
                     sent = {k.decode("latin-1").lower(): v.decode("latin-1")
                             for k, v in scope.get("headers", [])}
