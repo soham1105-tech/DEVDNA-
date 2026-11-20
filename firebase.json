@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "devdna-app",
     "public": "frontend/dist",
     "ignore": [
       "firebase.json",
