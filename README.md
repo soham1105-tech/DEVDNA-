@@ -144,6 +144,82 @@ All of these surface in the frontend under **Insights** (`/insights`).
 
 ---
 
+## 4c. DevDNA Change Intelligence: Pre-Merge Blast Radius & Risk Platform
+
+> **"Know what your code change could break before you merge it."**
+
+DevDNA Change Intelligence extends the digital twin into an active, change-aware reliability platform. Rather than acting as another passive AI code linter, Change Intelligence evaluates pull requests, git diffs, and commit branches against the base dependency graph to predict cascading failure propagation, rank relevant tests, run controlled empirical validation, and deliver evidence-backed merge recommendations.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                             DevDNA Change Intelligence Engine                          │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ 1. CHANGE DETECTION        │ Unified diff parsing • AST function, class & import diff  │
+│ 2. GRAPH PROPAGATION DIFF  │ Base vs modified MultiDiGraph • Direct & transitive hops   │
+│ 3. CHANGE RISK SCORING     │ 6 weighted factors (0-100) + quantified uncertainty score │
+│ 4. TEST PRIORITISATION     │ 5-tier ranked test suite by proximity & route exposure    │
+│ 5. CONTROLLED VALIDATION   │ Fault injection experiment • Confusion matrix (TP/FP/FN)  │
+│ 6. MERGE RECOMMENDATION    │ APPROVE / REVIEW REQUIRED / BLOCK RECOMMENDED decisions   │
+│ 7. GROUNDED AI EXPLAINER   │ Gemini narrative of propagation paths & repair safeguards  │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Core Change Intelligence Capabilities
+
+1. **AST-Enriched Change Detection (`services/change_detection.py`):**
+   - Parses unified diffs, modified files, additions, and deletions.
+   - For Python files, extracts changed functions, classes, and import declarations with line numbers via AST visitor traversal.
+2. **Before-and-After Dependency Analysis (`services/graph_diff.py`):**
+   - Compares the base NetworkX MultiDiGraph against the modified revision.
+   - Categorizes impacted nodes into:
+     - **Directly Modified**: Roots of the diff.
+     - **Transitively Affected**: Downstream dependents with exact hop distances.
+     - **Impacted API Routes**: Client-facing endpoints reachable along propagation paths.
+     - **Associated Tests**: Test nodes directly or transitively linked to modified components.
+     - **Newly Introduced / Removed Dependencies**: Architectural edge changes.
+3. **Transparent Multi-Factor Risk Assessment (`services/change_risk.py`):**
+   - Explainable score (0–100) combining 6 weighted factors:
+     - **Blast Radius** (25%): Proportional reach of failure propagation.
+     - **Component Criticality** (20%): Centrality and route-share of affected nodes.
+     - **Route Exposure** (20%): Number of public API endpoints touched.
+     - **Relevant Test Coverage** (15%): Direct and transitive test suite presence.
+     - **Static Finding Severity** (10%): High/medium static security and reliability findings.
+     - **Historical Reliability Calibration** (10%): Past empirical track record from Reliability Memory.
+   - Includes **Uncertainty Quantification** with explicit static call graph limitations.
+4. **5-Tiered Intelligent Test Prioritisation (`services/test_prioritization.py`):**
+   - **Tier 1 (Direct)**: Tests directly exercising modified functions/classes.
+   - **Tier 2 (Direct Dependents)**: Tests covering components that immediately call changed code.
+   - **Tier 3 (Transitive Dependents)**: Tests covering 2+ hop downstream components.
+   - **Tier 4 (API Routes)**: End-to-end integration tests for exposed endpoints.
+   - **Tier 5 (Regression)**: Broader system regression tests.
+5. **Controlled Empirical Validation (`services/change_validation.py`):**
+   - Executes baseline tests vs. faulted tests in an isolated sandbox.
+   - Validates whether predicted failures actually manifest, returning an empirical confusion matrix (True Positives, False Positives, False Negatives).
+6. **Evidence-Backed Merge Recommendations (`services/merge_recommendation.py`):**
+   - **`APPROVE`**: Low risk within analyzed scope with validated stability.
+   - **`REVIEW REQUIRED`**: Meaningful blast radius, route exposure, or missing Tier 1 tests.
+   - **`BLOCK RECOMMENDED`**: High-severity findings or confirmed empirical breakages.
+7. **Gemini Grounded Reasoning Layer (`ai/change_explainer.py`):**
+   - Translates deterministic graph facts into human-readable narratives explaining what changed, why it's risky, and recommended architectural safeguards.
+   - Deterministic offline fallback when Gemini is unavailable.
+8. **Interactive Change Intelligence Dashboard (`/change-intelligence`):**
+   - 6 tabbed views: **Change Overview**, **Impact Graph**, **Risk Breakdown**, **Test Intelligence**, **Validation Report**, and **AI Explanation**.
+   - Includes a one-click **"Run Buildathon Demo: DB Handler"** scenario for instant live evaluation.
+
+### API & CLI Usage
+
+| Action | Endpoint / CLI Command | Description |
+| :--- | :--- | :--- |
+| **Analyze Change** | `POST /api/projects/{id}/change-intelligence/analyze` | Run full change analysis on a file list or unified diff |
+| **List Analyses** | `GET /api/projects/{id}/change-intelligence` | Query historical change analyses for a project |
+| **Get Analysis** | `GET /api/projects/{id}/change-intelligence/{analysis_id}` | Retrieve complete analysis report and evidence |
+| **Run Validation** | `POST /api/projects/{id}/change-intelligence/{analysis_id}/validate` | Trigger isolated empirical fault injection |
+| **Buildathon Demo** | `POST /api/projects/{id}/change-intelligence/demo` | Run the bundled database handler modification demo |
+| **CLI Analysis** | `python -m app.cli <path> --change-intelligence --diff-file diff.patch` | Run Change Intelligence from terminal / CI |
+| **GitHub Action** | `.github/workflows/pr-impact.yml` | Automatic PR check runs & comments on pull requests |
+
+---
+
 ## 5. Mathematical Foundations & Risk Formula
 
 *Full technical details and proofs are documented in [docs/ALGORITHM.md](docs/ALGORITHM.md).*

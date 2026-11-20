@@ -184,7 +184,7 @@ function Lab({ project }) {
   }
 
   const docker = status?.ai?.docker_sandbox
-  const mode = project.trusted ? 'local' : docker ? 'docker' : 'blocked'
+  const mode = project.trusted ? 'local' : project.analysis_only ? 'blocked' : docker ? 'docker' : 'blocked'
 
   return (
     <>
@@ -334,9 +334,11 @@ function Lab({ project }) {
                 <li className="flex gap-2"><Container className="mt-0.5 h-4 w-4 shrink-0 text-faint" />
                   {mode === 'local' && 'Mode: local restricted harness (allowed because this is the bundled, trusted sample).'}
                   {mode === 'docker' && 'Mode: Docker sandbox: no network, read-only source, 512 MB memory, 1 CPU, 128 processes.'}
-                  {mode === 'blocked' && 'Mode: BLOCKED. This project is untrusted and the Docker sandbox is unavailable, so no code will run.'}
+                  {mode === 'blocked' && (project.analysis_only
+                    ? 'Mode: BLOCKED. Untrusted JavaScript/TypeScript projects are blocked until a Docker JavaScript sandbox is available, so no code will run.'
+                    : 'Mode: BLOCKED. This project is untrusted and the Docker sandbox is unavailable, so no code will run.')}
                 </li>
-                <li className="flex gap-2"><Play className="mt-0.5 h-4 w-4 shrink-0 text-faint" /> A disposable copy of the project runs <code className="num whitespace-nowrap text-xs text-ink">python -m pytest</code> twice: once as a baseline, once with the fault injected.</li>
+                <li className="flex gap-2"><Play className="mt-0.5 h-4 w-4 shrink-0 text-faint" /> A disposable copy of the project runs the fixed test command (<code className="num whitespace-nowrap text-xs text-ink">python -m pytest</code> for Python or <code className="num whitespace-nowrap text-xs text-ink">npx jest --ci --json</code> for JavaScript) twice: once as a baseline, once with the fault injected.</li>
                 <li className="flex gap-2"><Beaker className="mt-0.5 h-4 w-4 shrink-0 text-faint" /> Fault: {prediction.impact.fault_description}</li>
                 <li className="flex gap-2"><Lock className="mt-0.5 h-4 w-4 shrink-0 text-faint" /> Outbound network blocked, environment scrubbed of API keys, {90}s timeout, output capped, temp files deleted afterwards.</li>
                 <li className="flex gap-2"><Timer className="mt-0.5 h-4 w-4 shrink-0 text-faint" /> No production systems are touched. The fixed command cannot be changed from the UI.</li>

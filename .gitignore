@@ -33,6 +33,7 @@ build/
 
 # IDE, OS & Agent Tools
 .agents/
+.taste-skill/
 .claude/
 .idea/
 .vscode/

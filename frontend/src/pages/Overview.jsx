@@ -106,8 +106,9 @@ function Dashboard({ project }) {
         <div className="mb-4 flex items-start gap-2.5 rounded-card border border-warning/25 bg-warning-bg px-4 py-3 text-sm text-muted">
           <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           <span>
-            <span className="font-medium text-ink">Analysis only.</span> Analysis and predictions are available, but
-            experiments cannot verify them for JavaScript/TypeScript-only projects (experiments run a Python pytest suite).
+            <span className="font-medium text-ink">Analysis only.</span> Analysis and predictions are available.
+            JavaScript/TypeScript experiments require a Jest test script, and untrusted JavaScript projects are blocked
+            until a Docker JavaScript sandbox is available; Vitest and unrecognised runners are never guessed.
           </span>
         </div>
       )}

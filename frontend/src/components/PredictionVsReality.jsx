@@ -94,7 +94,7 @@ export default function PredictionVsReality({ experiment, onUpdate }) {
           </div>
         </Card>
         <Card>
-          <CardHeader title="Observed" subtitle="Real pytest runs: baseline, then with the injected fault" />
+          <CardHeader title="Observed" subtitle="Real test runs: baseline, then with the injected fault" />
           <div className="space-y-1 p-4 text-sm text-muted">
             <div>Baseline: <span className="num text-positive">{base?.counts?.passed} passed</span>, {base?.counts?.failed + base?.counts?.error} failed</div>
             <div>With fault: <span className="num text-positive">{fault?.counts?.passed} passed</span>, <span className="num text-negative">{fault?.counts?.failed} failed, {fault?.counts?.error} errors</span></div>

@@ -7,6 +7,7 @@ import { StatusProvider } from './hooks/useStatus'
 import ErrorBoundary from './components/ErrorBoundary'
 import AppLayout from './layouts/AppLayout'
 import Architecture from './pages/Architecture'
+import ChangeIntelligence from './pages/ChangeIntelligence'
 import ExperimentDetail from './pages/ExperimentDetail'
 import Experiments from './pages/Experiments'
 import Findings from './pages/Findings'
@@ -36,6 +37,7 @@ export default function App() {
                   <Routes>
                     <Route element={<AppLayout />}>
                       <Route index element={<Overview />} />
+                      <Route path="change-intelligence" element={<ChangeIntelligence />} />
                       <Route path="architecture" element={<Architecture />} />
                       <Route path="prediction" element={<Prediction />} />
                       <Route path="lab" element={<WhatIfLab />} />
