@@ -39,6 +39,7 @@ export function ProjectProvider({ children }) {
     return {
       projects,
       current,
+      project: current,
       currentId,
       loading,
       error,

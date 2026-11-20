@@ -213,3 +213,25 @@ class ReportRecord(Base):
     format: Mapped[str] = mapped_column(String(10))
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ChangeAnalysis(Base):
+    """Change Intelligence persistent record: diff manifest, graph diff, risk, tests, validation, recommendation."""
+    __tablename__ = "change_analyses"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_id)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(255), default="Code Change Analysis")
+    base_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    head_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="completed")  # queued|running|completed|failed
+    diff_manifest: Mapped[dict] = mapped_column(JSON, default=dict)
+    graph_diff: Mapped[dict] = mapped_column(JSON, default=dict)
+    risk_assessment: Mapped[dict] = mapped_column(JSON, default=dict)
+    prioritized_tests: Mapped[dict] = mapped_column(JSON, default=dict)
+    validation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    recommendation: Mapped[dict] = mapped_column(JSON, default=dict)
+    ai_explanation: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
