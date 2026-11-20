@@ -396,10 +396,10 @@ Open **`http://localhost:5173`** in your browser.
 DevDNA maintains a comprehensive automated test suite across backend algorithms, security boundaries, and UI components:
 
 ```bash
-# Run backend pytest suite (298 passed, 1 skipped)
+# Run backend pytest suite (302 passed, 7 skipped)
 cd backend && python -m pytest -q
 
-# Run frontend Vitest suite (27 tests)
+# Run frontend Vitest suite (30 tests)
 cd frontend && npm test -- --run
 
 # Compile frontend production bundle
@@ -515,13 +515,13 @@ DEVDNA/
 │   │   ├── agentguard/         # AI-agent config parsers, rules, permission graph
 │   │   ├── ai/                 # Gemma 4 integration (gemma-4-26b-a4b-it, retry loop)
 │   │   ├── analyzer/           # Python AST parser (+ JS/TS via AST engine), redaction
-│   │   ├── api/                # REST endpoints (projects, predictions, experiments, agentguard, pr_review)
+│   │   ├── api/                # REST endpoints (projects, predictions, experiments, agentguard, PR review, change intelligence)
 │   │   ├── experiments/        # What-If runner (pytest + Jest) and devdna_faults plugin
 │   │   ├── graph/              # NetworkX MultiDiGraph engine and Dual BFS
 │   │   ├── models/             # SQLAlchemy database models
-│   │   └── services/           # Findings rules, change impact, test gaps, remediation,
+│   │   └── services/           # Findings, change intelligence, test gaps, remediation,
 │   │                           #   reliability memory, PR review, calibration, reports
-│   ├── tests/                  # 298 automated pytest unit and integration tests
+│   ├── tests/                  # 302 passing pytest unit and integration tests (7 skipped)
 │   ├── sample_project/         # ShopLite reference e-commerce repository
 │   └── requirements.txt        # Backend dependencies
 ├── frontend/                   # React 18 + Vite Web Application
