@@ -146,3 +146,51 @@ def test_incremental_only_reparses_changed_files(tmp_path):
     # the changed file's edit is visible in the new result
     assert any(f["name"] == "b" for f in
                [{"name": c["name"]} for c in second["components"]])
+
+
+def test_mixed_python_js_ts_and_unsupported_language_analysis(tmp_path):
+    """Verify Python AST, JavaScript, TypeScript/TSX, and unsupported languages work together."""
+    from app.analyzer.dispatch import analyse_repository
+
+    (tmp_path / "backend").mkdir()
+    (tmp_path / "backend" / "api.py").write_text(
+        "from fastapi import FastAPI\napp = FastAPI()\n@app.get('/items')\ndef list_items():\n    return []\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "frontend").mkdir()
+    (tmp_path / "frontend" / "client.js").write_text(
+        "export async function fetchItems() { return fetch('/items'); }\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "frontend" / "App.tsx").write_text(
+        "import { fetchItems } from './client';\nexport function App(): string { fetchItems(); return 'ok'; }\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "README.go").write_text("package main\nfunc main() {}\n", encoding="utf-8")
+
+    result = analyse_repository(tmp_path)
+    names = {c["name"] for c in result["components"]}
+    assert "list_items" in names
+    assert "fetchItems" in names
+    assert "App" in names
+    assert "Go" in result["scan"]["languages"]
+    assert set(result["scan"]["analysed_languages"]) >= {"Python", "JavaScript", "TypeScript"}
+
+
+def test_missing_tree_sitter_raises_actionable_runtime_error(tmp_path, monkeypatch):
+    """Missing tree-sitter-language-pack must fail loudly with an actionable install diagnostic."""
+    import builtins
+    from app.analyzer import js_analyzer
+
+    (tmp_path / "index.ts").write_text("export const x: number = 1;\n", encoding="utf-8")
+    monkeypatch.setattr(js_analyzer, "_PARSERS", {})
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "tree_sitter_language_pack":
+            raise ImportError("No module named 'tree_sitter_language_pack'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    with pytest.raises(RuntimeError, match="tree-sitter-language-pack.*requirements\\.lock"):
+        analyse_js_project(tmp_path, use_cache=False)

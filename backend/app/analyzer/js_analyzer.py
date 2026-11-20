@@ -45,6 +45,7 @@ import json
 import logging
 import posixpath
 import re
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -111,8 +112,17 @@ def _parser(lang: str):
         try:
             from tree_sitter_language_pack import get_parser
         except ImportError as exc:  # pragma: no cover - environment issue
-            raise RuntimeError("JS/TS analysis requires the 'tree-sitter-language-pack' package") from exc
-        _PARSERS[lang] = get_parser(lang)
+            raise RuntimeError(
+                "JS/TS analysis requires the 'tree-sitter-language-pack' package in the active Python "
+                f"environment ({sys.executable}). Install backend dependencies with: "
+                "python -m pip install -r backend/requirements.lock"
+            ) from exc
+        try:
+            _PARSERS[lang] = get_parser(lang)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to initialise tree-sitter parser for '{lang}' in {sys.executable}: {exc}"
+            ) from exc
     return _PARSERS[lang]
 
 

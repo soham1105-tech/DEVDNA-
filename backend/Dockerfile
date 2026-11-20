@@ -8,7 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /srv
 
 COPY requirements.lock requirements-prod.txt ./
-RUN pip install --no-cache-dir -r requirements-prod.txt
+RUN pip install --no-cache-dir -r requirements-prod.txt \
+    && python -c "from tree_sitter_language_pack import get_parser; [get_parser(l) for l in ('javascript', 'typescript', 'tsx')]"
 
 COPY app ./app
 COPY sample_project ./sample_project
