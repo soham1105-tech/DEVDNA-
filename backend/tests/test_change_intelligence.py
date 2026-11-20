@@ -372,7 +372,8 @@ def test_api_change_intelligence_demo_scenario(client, sample_project):
     body = r.json()
 
     assert body["status"] == "completed"
-    assert "Sample PR #42" in body["title"]
+    assert "Demo Scenario (ShopLite)" in body["title"]
+    assert body["diff_manifest"].get("is_demo") is True
 
     # Diff manifest
     files = body["diff_manifest"]["files"]
@@ -401,3 +402,109 @@ def test_api_change_intelligence_demo_scenario(client, sample_project):
     assert body["ai_explanation"] is not None
     assert body["ai_explanation"]["summary"]
     assert body["ai_explanation"]["propagation_narrative"]
+
+
+def test_demo_scenario_rejected_on_non_sample_project(client, tmp_path):
+    """Sample ShopLite demo scenario must never run or leak onto an uploaded/real repository."""
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("myrepo/app.py", "def hello():\n    return 'world'\n")
+    up = client.post("/api/projects/upload", files={"file": ("myrepo.zip", buf.getvalue(), "application/zip")})
+    assert up.status_code == 201, up.text
+    pid = up.json()["project"]["id"]
+
+    r = client.post(f"/api/projects/{pid}/change-intelligence/demo")
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "sample_only_scenario"
+    # Ensure no demo record was persisted on the uploaded project
+    assert client.get(f"/api/projects/{pid}/change-intelligence").json() == []
+
+
+def test_repository_wide_findings_separated_from_change_specific_blockers():
+    """Pre-existing high-severity findings elsewhere in the repo must NOT trigger false change blockers or confirmed-propagation claims."""
+    from app.services.merge_recommendation import generate_merge_recommendation
+
+    zero_graph_diff = {
+        "summary": {"directly_affected_count": 0, "transitively_affected_count": 0, "impacted_routes_count": 0},
+        "directly_affected": [],
+        "transitively_affected": [],
+        "critical_components_affected": [],
+        "impacted_routes": [],
+    }
+    low_risk = {"score": 14, "level": "low", "factors": [], "uncertainty": {"score": 10, "level": "low", "limitations": []}}
+    repo_findings = [
+        {"id": "f1", "severity": "high", "title": "Hardcoded secret in backend/app/crud.py", "evidence": [{"file": "backend/app/crud.py", "line": 42}]}
+    ]
+
+    rec = generate_merge_recommendation(
+        risk=low_risk,
+        graph_diff=zero_graph_diff,
+        prioritized_tests={"summary": {"total_prioritized_tests": 0, "tier_1_direct": 0}},
+        findings=[],  # zero change-specific findings
+        validation=None,
+        repository_findings=repo_findings,
+        unmapped_files=[{"file": "nonexistent.py", "reason": "Not mapped"}],
+    )
+
+    assert rec["decision"] != "BLOCK RECOMMENDED"
+    assert rec["blockers"] == []
+    assert "confirmed" not in rec["headline"].lower()
+    assert rec["repository_high_findings_count"] == 1
+    assert len(rec["repository_warnings"]) == 1
+    assert rec["repository_warnings"][0]["scope"] == "repository_wide"
+    assert "backend/app/crud.py:42" in rec["repository_warnings"][0]["location"]
+
+
+def test_risk_level_agrees_with_numeric_score_and_blocks_only_with_traceable_reason():
+    """Verify 4-band risk scale (low/medium/high/critical) and traceable blocking grounds."""
+    from app.services.merge_recommendation import generate_merge_recommendation
+
+    change_finding = [{"id": "cf1", "severity": "high", "title": "SQL injection in changed handler", "evidence": [{"file": "app/db.py", "line": 12}]}]
+    rec = generate_merge_recommendation(
+        risk={"score": 88, "level": "critical"},
+        graph_diff={
+            "summary": {"directly_affected_count": 1, "transitively_affected_count": 2, "impacted_routes_count": 1},
+            "directly_affected": [{"id": "func:db.query"}],
+            "transitively_affected": [],
+            "critical_components_affected": [{"id": "func:db.query"}],
+            "impacted_routes": [{"id": "r1", "route": "POST /api/items"}],
+        },
+        prioritized_tests={"summary": {"total_prioritized_tests": 1, "tier_1_direct": 0}},
+        findings=change_finding,
+        validation=None,
+    )
+    assert rec["decision"] == "BLOCK RECOMMENDED"
+    assert rec["risk_level"] == "critical"
+    assert any("app/db.py:12" in b for b in rec["blockers"])
+    assert "confirmed" not in rec["headline"].lower()  # no experiment executed
+
+
+def test_change_analysis_records_repository_identity_and_branch(client, tmp_path):
+    """Every change analysis must carry repository identity and branch/ref metadata."""
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("repo/app.py", "def compute():\n    return 42\n")
+    up = client.post(
+        "/api/projects/upload",
+        files={"file": ("repo.zip", buf.getvalue(), "application/zip")},
+        data={"github_url": "https://github.com/acme/repo", "github_branch": "master"},
+    )
+    assert up.status_code == 201
+    pid = up.json()["project"]["id"]
+
+    res = client.post(
+        f"/api/projects/{pid}/change-intelligence/analyze",
+        json={"files": ["app.py"], "run_validation": False, "request_ai": False},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["project_id"] == pid
+    assert body["base_ref"] == "master"
+    assert body["diff_manifest"]["repository"]["project_id"] == pid
+    assert body["diff_manifest"]["repository"]["branch"] == "master"

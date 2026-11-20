@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   GitPullRequest,
@@ -62,87 +62,111 @@ export default function ChangeIntelligence() {
   const [validating, setValidating] = useState(false)
   const [error, setError] = useState(null)
 
-  // Custom input state
+  // Custom input state — never prefill ShopLite paths on real repositories
   const [inputMode, setInputMode] = useState('files') // 'files' | 'diff'
-  const [fileInput, setFileInput] = useState('shoplite/db.py')
+  const [fileInput, setFileInput] = useState('')
   const [diffInput, setDiffInput] = useState('')
+  const requestIdRef = useRef(0)
+
+  const isSampleProject = project?.source_type === 'sample'
 
   useEffect(() => {
+    // Immediately clear stale analysis state whenever the selected project changes
+    requestIdRef.current += 1
+    setAnalysis(null)
+    setHistory([])
+    setError(null)
+    setActiveTab('overview')
+    setFileInput(project?.source_type === 'sample' ? 'shoplite/db.py' : '')
+    setDiffInput('')
     if (project?.id) {
-      loadHistory()
+      loadHistory(project.id, requestIdRef.current)
     }
-  }, [project?.id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.id, project?.source_type])
 
-  async function loadHistory() {
+  async function loadHistory(targetProjectId = project?.id, reqId = ++requestIdRef.current) {
+    if (!targetProjectId) return
     try {
       setLoading(true)
-      const list = await api.listChangeAnalyses(project.id)
-      setHistory(list || [])
-      if (list && list.length > 0) {
-        setAnalysis(list[0])
-      }
+      const list = await api.listChangeAnalyses(targetProjectId)
+      if (reqId !== requestIdRef.current) return // discard stale response from previous project
+      const scoped = (list || []).filter((item) => !item.project_id || item.project_id === targetProjectId)
+      setHistory(scoped)
+      setAnalysis(scoped.length > 0 ? scoped[0] : null)
     } catch (err) {
+      if (reqId !== requestIdRef.current) return
       setError(err)
     } finally {
-      setLoading(false)
+      if (reqId === requestIdRef.current) setLoading(false)
     }
   }
 
   async function handleAnalyze() {
     if (!project?.id) return
+    const reqId = ++requestIdRef.current
     setError(null)
     setLoading(true)
     try {
+      const files = fileInput.split(',').map((f) => f.trim()).filter(Boolean)
       const payload = {
-        title: inputMode === 'diff' ? 'Custom Git Diff Analysis' : `Change in ${fileInput.split(',').length} file(s)`,
+        title: inputMode === 'diff' ? 'Custom Git Diff Analysis' : `Change in ${files.length} file(s)`,
         run_validation: false,
         request_ai: true,
       }
       if (inputMode === 'diff') {
         payload.diff_text = diffInput
       } else {
-        payload.files = fileInput.split(',').map((f) => f.trim()).filter(Boolean)
+        payload.files = files
       }
 
       const res = await api.analyzeChange(project.id, payload)
+      if (reqId !== requestIdRef.current) return
       setAnalysis(res)
       setHistory((prev) => [res, ...prev.filter((h) => h.id !== res.id)])
     } catch (err) {
+      if (reqId !== requestIdRef.current) return
       setError(err)
     } finally {
-      setLoading(false)
+      if (reqId === requestIdRef.current) setLoading(false)
     }
   }
 
   async function handleRunDemo() {
-    if (!project?.id) return
+    if (!project?.id || !isSampleProject) return
+    const reqId = ++requestIdRef.current
     setError(null)
     setLoading(true)
     try {
       const res = await api.runChangeDemo(project.id)
+      if (reqId !== requestIdRef.current) return
       setAnalysis(res)
       setHistory((prev) => [res, ...prev.filter((h) => h.id !== res.id)])
       setActiveTab('overview')
     } catch (err) {
+      if (reqId !== requestIdRef.current) return
       setError(err)
     } finally {
-      setLoading(false)
+      if (reqId === requestIdRef.current) setLoading(false)
     }
   }
 
   async function handleTriggerValidation() {
     if (!project?.id || !analysis?.id) return
+    const reqId = requestIdRef.current
     setValidating(true)
     setError(null)
     try {
       const updated = await api.validateChangeAnalysis(project.id, analysis.id)
+      if (reqId !== requestIdRef.current) return
       setAnalysis(updated)
       setHistory((prev) => prev.map((h) => (h.id === updated.id ? updated : h)))
       setActiveTab('validation')
     } catch (err) {
+      if (reqId !== requestIdRef.current) return
       setError(err)
     } finally {
-      setValidating(false)
+      if (reqId === requestIdRef.current) setValidating(false)
     }
   }
 
@@ -193,11 +217,13 @@ export default function ChangeIntelligence() {
           </div>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-ink">DevDNA Change Intelligence</h1>
           <p className="mt-0.5 text-sm text-muted">
-            Know what your code change could break before you merge it.
+            Repository: <span className="font-medium text-ink">{project.name}</span>
+            {project.ast_repository?.branch ? <> · Branch: <span className="num text-ink">{project.ast_repository.branch}</span></> : null}
+            {analysis?.base_ref && analysis.base_ref !== project.ast_repository?.branch ? <> · Base ref: <span className="num text-ink">{analysis.base_ref}</span></> : null}
           </p>
         </div>
 
-        {/* Sample Scenario & Actions */}
+        {/* Sample Scenario (only on ShopLite sample project) & Actions */}
         <div className="flex flex-wrap items-center gap-2.5">
           <ExplainAnalysisButton kind="change_intelligence" data={analysis} />
           {history.length > 1 && (
@@ -217,16 +243,18 @@ export default function ChangeIntelligence() {
               ))}
             </select>
           )}
-          <Button
-            variant="outline"
-            onClick={handleRunDemo}
-            disabled={loading}
-            icon={Play}
-            className="border-accent/40 bg-accent/10 text-accent hover:bg-accent/20"
-          >
-            {loading ? 'Analyzing...' : 'Run Sample Scenario: DB Handler'}
-          </Button>
-          {analysis && !val?.executed && (
+          {isSampleProject && (
+            <Button
+              variant="outline"
+              onClick={handleRunDemo}
+              disabled={loading}
+              icon={Play}
+              className="border-accent/40 bg-accent/10 text-accent hover:bg-accent/20"
+            >
+              {loading ? 'Analyzing...' : 'Run Demo Scenario: DB Handler'}
+            </Button>
+          )}
+          {analysis && analysis.status !== 'failed' && !val?.executed && (
             <Button
               variant="default"
               onClick={handleTriggerValidation}
@@ -281,7 +309,11 @@ export default function ChangeIntelligence() {
                 type="text"
                 value={fileInput}
                 onChange={(e) => setFileInput(e.target.value)}
-                placeholder="Comma-separated files: shoplite/db.py, shoplite/pricing.py"
+                placeholder={
+                  isSampleProject
+                    ? 'Comma-separated files: shoplite/db.py, shoplite/services/pricing.py'
+                    : 'Enter repo-relative paths, e.g. backend/app/crud.py, backend/app/api/routes/items.py'
+                }
                 className="flex-1 rounded-control border border-edge bg-base px-3 py-1.5 text-xs text-ink placeholder:text-faint focus:border-accent focus:outline-none"
               />
             ) : (
@@ -314,12 +346,24 @@ export default function ChangeIntelligence() {
         <EmptyState
           icon={GitPullRequest}
           title="No Change Analysis Run Yet"
-          message="Click 'Run Sample Scenario: DB Handler' to run the bundled end-to-end database handler scenario, or input changed files above."
-          action={
-            <Button onClick={handleRunDemo} icon={Play}>
-              Run Sample Scenario
-            </Button>
+          description={
+            isSampleProject
+              ? "Click 'Run Demo Scenario: DB Handler' to run the bundled ShopLite demonstration, or enter changed files / paste a unified git diff above."
+              : `Enter repo-relative changed file paths for ${project.name} or paste a unified git diff above to compute static change impact.`
           }
+          action={
+            isSampleProject ? (
+              <Button onClick={handleRunDemo} icon={Play}>
+                Run Demo Scenario
+              </Button>
+            ) : null
+          }
+        />
+      ) : analysis.status === 'failed' ? (
+        <ErrorState
+          title="Change analysis incomplete (failed)"
+          error={{ message: analysis.error || 'This change analysis did not complete successfully.' }}
+          onRetry={() => loadHistory(project.id)}
         />
       ) : (
         <div className="space-y-6">
@@ -333,24 +377,29 @@ export default function ChangeIntelligence() {
                   {isReview && <AlertTriangle className="h-8 w-8 text-warning shrink-0" />}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide border ${decisionBadgeColor}`}>
                       {decision}
                     </span>
+                    {analysis.diff_manifest?.is_demo && (
+                      <Badge className="bg-accent/15 text-accent">Demonstration Scenario</Badge>
+                    )}
                     <span className="text-xs text-muted">
                       Analyzed at {new Date(analysis.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
-                    {val?.executed && (
+                    {val?.executed ? (
                       <span className="flex items-center gap-1 text-xs text-accent font-medium">
-                        <Zap className="h-3 w-3" /> Empirically Verified
+                        <Zap className="h-3 w-3" /> Experimentally Confirmed
                       </span>
+                    ) : (
+                      <span className="text-xs text-faint">Static Prediction Only</span>
                     )}
                   </div>
                   <h2 className="mt-1 text-lg font-semibold text-ink">
                     {rec.headline || 'Change analysis completed.'}
                   </h2>
                   <p className="mt-0.5 text-xs text-muted max-w-3xl">
-                    {analysis.title || 'Code Change Analysis'} — {analysis.diff_manifest?.summary?.total_files || 0} file(s) changed, {diff.summary?.directly_affected_count || 0} direct component(s) modified.
+                    {analysis.title || 'Code Change Analysis'} — {analysis.diff_manifest?.summary?.total_files || 0} file(s) specified, {diff.summary?.directly_affected_count || 0} direct component(s) matched.
                   </p>
                 </div>
               </div>
@@ -363,7 +412,7 @@ export default function ChangeIntelligence() {
                   </div>
                   <div className="flex items-baseline justify-end gap-1.5 mt-0.5">
                     <span className={`text-3xl font-extrabold ${
-                      risk.level === 'high' ? 'text-negative' : risk.level === 'medium' ? 'text-warning' : 'text-positive'
+                      risk.level === 'critical' || risk.level === 'high' ? 'text-negative' : risk.level === 'medium' ? 'text-warning' : 'text-positive'
                     }`}>
                       {risk.score ?? 0}
                     </span>
@@ -376,13 +425,36 @@ export default function ChangeIntelligence() {
               </div>
             </div>
 
-            {/* Blockers or Warnings if any */}
+            {/* Honest unmapped/zero-impact notice */}
+            {(diff.summary?.directly_affected_count || 0) === 0 && (
+              <div className="mt-4 pt-3 border-t border-edge flex items-start gap-2 text-xs text-warning">
+                <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>
+                  No components in <b>{project.name}</b> matched the specified file path(s). Verify the paths exist in this repository to compute dependency propagation.
+                </span>
+              </div>
+            )}
+
+            {/* Change-Specific Blockers */}
             {rec.blockers && rec.blockers.length > 0 && (
               <div className="mt-4 pt-3 border-t border-edge flex items-start gap-2 text-xs text-negative">
                 <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-semibold">Blockers: </span>
+                  <span className="font-semibold">Change-Specific Blockers: </span>
                   {rec.blockers.join(' ')}
+                </div>
+              </div>
+            )}
+
+            {/* Pre-Existing Repository-Wide Security/Reliability Warnings (strictly separated) */}
+            {rec.repository_warnings && rec.repository_warnings.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-edge flex items-start gap-2 text-xs text-warning">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold">
+                    Repository-Wide Warnings ({rec.repository_high_findings_count ?? rec.repository_warnings.length} pre-existing high-severity finding(s) elsewhere in codebase — not attributed to this change):{' '}
+                  </span>
+                  {rec.repository_warnings.slice(0, 2).map((w) => `${w.title} (${w.location})`).join('; ')}
                 </div>
               </div>
             )}
@@ -549,14 +621,53 @@ function ChangeOverviewTab({ analysis, onTriggerValidation, validating }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {(rec.evidence || []).map((ev, i) => (
                 <div key={i} className="p-3 rounded-card bg-surface border border-edge text-xs space-y-1">
-                  <div className="font-semibold text-ink flex items-center gap-1.5">
-                    <Info className="h-3.5 w-3.5 text-accent" />
-                    {ev.title}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-semibold text-ink flex items-center gap-1.5">
+                      <Info className="h-3.5 w-3.5 text-accent" />
+                      {ev.title}
+                    </div>
+                    {ev.provenance && (
+                      <Badge className={
+                        ev.provenance === 'experimentally_confirmed'
+                          ? 'bg-positive-bg text-positive-ink'
+                          : ev.provenance === 'detected_statically'
+                          ? 'bg-warning-bg text-warning-ink'
+                          : 'bg-raised text-muted'
+                      }>
+                        {ev.provenance.replace(/_/g, ' ')}
+                      </Badge>
+                    )}
                   </div>
                   <div className="text-muted leading-relaxed">{ev.description}</div>
                 </div>
               ))}
             </div>
+
+            <details className="rounded-card border border-edge bg-ground p-3 text-xs">
+              <summary className="cursor-pointer font-medium text-ink">
+                Inspect full provenance & traceability ({analysis.graph_diff?.impacted_routes?.length || 0} routes, {analysis.prioritized_tests?.tests?.length || 0} tests, {rec.repository_warnings?.length || 0} repo-wide warnings)
+              </summary>
+              <div className="mt-3 space-y-2.5 text-muted">
+                <div>
+                  <span className="font-semibold text-ink">Changed files & lines: </span>
+                  {files.length > 0
+                    ? files.map((f) => `${f.path} (${f.changed_lines?.length ? `${f.changed_lines.length} lines` : 'file-level'})`).join(', ')
+                    : 'None'}
+                </div>
+                <div>
+                  <span className="font-semibold text-ink">Impacted routes (static prediction): </span>
+                  {(analysis.graph_diff?.impacted_routes || []).length > 0
+                    ? analysis.graph_diff.impacted_routes.map((r) => `${r.route} (${r.file || 'unknown'})`).join(', ')
+                    : 'None'}
+                </div>
+                <div>
+                  <span className="font-semibold text-ink">Repository-wide warnings (separate from this change): </span>
+                  {(rec.repository_warnings || []).length > 0
+                    ? rec.repository_warnings.map((w) => `${w.title} @ ${w.location}`).join('; ')
+                    : 'None'}
+                </div>
+              </div>
+            </details>
 
             {rec.recommended_actions && rec.recommended_actions.length > 0 && (
               <div className="mt-4 pt-3 border-t border-edge">

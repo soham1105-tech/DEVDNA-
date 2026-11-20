@@ -176,16 +176,33 @@ def run_sample_scenario(
     6. Prediction vs reality comparison
     7. Evidence-backed merge recommendation with grounded reasoning.
     """
-    get_project(db, project_id)
+    project = get_project(db, project_id)
+    if project.source_type != "sample":
+        raise HTTPException(
+            400,
+            detail={
+                "code": "sample_only_scenario",
+                "message": (
+                    "The bundled ShopLite DB Handler demonstration scenario can only run on the "
+                    "ShopLite sample project. For imported repositories, provide changed file paths "
+                    "from that repository or paste a unified git diff."
+                ),
+            },
+        )
     try:
         record = analyze_code_change(
             db,
             project_id,
             diff_text=DEMO_DIFF,
             run_validation=True,
-            title="Sample PR #42: Update Database Session Isolation Handler",
+            title="Demo Scenario (ShopLite): Update Database Session Isolation Handler",
             request_ai=True,
         )
+        manifest = dict(record.diff_manifest or {})
+        manifest["is_demo"] = True
+        record.diff_manifest = manifest
+        db.commit()
+        db.refresh(record)
         return _change_analysis_out(record)
     except ValueError as e:
         raise HTTPException(400, detail={"code": "sample_scenario_error", "message": str(e)}) from e

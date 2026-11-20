@@ -100,20 +100,47 @@ def analyze_code_change(
         changed_files=changed_file_paths,
     )
 
-    # 4. Fetch findings on the latest run
+    # 4. Fetch findings on the latest run and separate change-specific vs repository-wide
     findings_rows = db.scalars(select(Finding).where(Finding.run_id == project.latest_run_id)).all()
-    findings_list = [
-        {
+    affected_comp_ids = (
+        {c["id"] for c in graph_diff.get("directly_affected", [])}
+        | {c["id"] for c in graph_diff.get("transitively_affected", [])}
+        | {c["id"] for c in graph_diff.get("potentially_affected", [])}
+        | {r["id"] for r in graph_diff.get("impacted_routes", [])}
+    )
+    affected_files = (
+        {p.replace("\\", "/").lstrip("./").lstrip("/") for p in changed_file_paths}
+        | {
+            (c.get("file") or "").replace("\\", "/").lstrip("./").lstrip("/")
+            for c in (graph_diff.get("directly_affected", []) + graph_diff.get("transitively_affected", []))
+            if c.get("file")
+        }
+    )
+
+    change_findings: list[dict[str, Any]] = []
+    repository_findings: list[dict[str, Any]] = []
+    for f in findings_rows:
+        item = {
             "id": f.id,
             "rule": f.rule,
             "title": f.title,
             "severity": f.severity,
-            "evidence": f.evidence,
+            "component_id": f.component_id,
+            "evidence": f.evidence or [],
         }
-        for f in findings_rows
-    ]
+        ev_files = {
+            (ev.get("file") or "").replace("\\", "/").lstrip("./").lstrip("/")
+            for ev in (f.evidence or [])
+            if isinstance(ev, dict) and ev.get("file")
+        }
+        if (f.component_id and f.component_id in affected_comp_ids) or bool(ev_files & affected_files):
+            item["scope"] = "change_specific"
+            change_findings.append(item)
+        else:
+            item["scope"] = "repository_wide"
+            repository_findings.append(item)
 
-    # 5. Calculate Change Risk
+    # 5. Calculate Change Risk (using ONLY change-specific findings)
     total_routes = sum(1 for _, d in base_graph.nodes(data=True) if d.get("type") == "route")
     unmapped_files = [
         {"file": f["path"], "reason": "Not mapped onto analysed component graph"}
@@ -128,7 +155,7 @@ def analyze_code_change(
         db=db,
         project_id=project_id,
         graph_diff=graph_diff,
-        findings=findings_list,
+        findings=change_findings,
         unmapped_files=unmapped_files,
         total_routes_in_repo=total_routes,
     )
@@ -136,7 +163,7 @@ def analyze_code_change(
     # 6. Prioritize Tests
     prioritized_tests = prioritize_tests(mod_graph, graph_diff)
 
-    # 7. Controlled Validation (run if explicitly requested or if high-confidence demo project)
+    # 7. Controlled Validation (run if explicitly requested)
     validation_result: dict[str, Any] | None = None
     if run_validation:
         validation_result = run_controlled_validation(
@@ -145,13 +172,15 @@ def analyze_code_change(
             prioritized_tests=prioritized_tests["tests"],
         )
 
-    # 8. Merge Recommendation
+    # 8. Merge Recommendation (strictly separating change-specific vs repo-wide findings)
     recommendation = generate_merge_recommendation(
         risk=risk_assessment,
         graph_diff=graph_diff,
         prioritized_tests=prioritized_tests,
-        findings=findings_list,
+        findings=change_findings,
         validation=validation_result,
+        repository_findings=repository_findings,
+        unmapped_files=unmapped_files,
     )
 
     # 9. Gemini Reasoning Layer
@@ -173,11 +202,21 @@ def analyze_code_change(
         else "Change Intelligence Analysis"
     )
 
+    resolved_base_ref = base_ref or project.ast_branch
+    resolved_head_ref = head_ref or ("working-tree" if (source_path / ".git").exists() else None)
+    change_manifest["repository"] = {
+        "project_id": project.id,
+        "name": project.name,
+        "source_type": project.source_type,
+        "branch": project.ast_branch,
+    }
+    change_manifest["unmapped_files"] = unmapped_files
+
     change_record = ChangeAnalysis(
         project_id=project.id,
         title=run_title,
-        base_ref=base_ref,
-        head_ref=head_ref,
+        base_ref=resolved_base_ref,
+        head_ref=resolved_head_ref,
         status="completed",
         diff_manifest=change_manifest,
         graph_diff=graph_diff,

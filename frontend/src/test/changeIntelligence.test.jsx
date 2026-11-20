@@ -14,10 +14,12 @@ vi.mock('../services/api', () => ({
   },
 }))
 
+let mockCurrentProject = { id: 'p1', name: 'ShopLite (sample)', source_type: 'sample', latest_run_id: 'r1' }
+
 vi.mock('../hooks/useProject', () => ({
   useProject: () => ({
-    current: { id: 'p1', name: 'ShopLite Demo', latest_run_id: 'r1' },
-    project: { id: 'p1', name: 'ShopLite Demo', latest_run_id: 'r1' },
+    current: mockCurrentProject,
+    project: mockCurrentProject,
     loading: false,
     ready: true,
   }),
@@ -106,6 +108,7 @@ const MOCK_ANALYSIS = {
 describe('ChangeIntelligence page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockCurrentProject = { id: 'p1', name: 'ShopLite (sample)', source_type: 'sample', latest_run_id: 'r1' }
     api.listChangeAnalyses.mockResolvedValue([MOCK_ANALYSIS])
     api.getChangeAnalysis.mockResolvedValue(MOCK_ANALYSIS)
     api.runChangeDemo.mockResolvedValue(MOCK_ANALYSIS)
@@ -189,5 +192,87 @@ describe('ChangeIntelligence page', () => {
       expect(screen.getByText('BLOCK RECOMMENDED')).toBeInTheDocument()
     })
     expect(screen.getByText('78')).toBeInTheDocument()
+  })
+
+  it('clears stale analysis when switching to a real project and hides the ShopLite demo button', async () => {
+    const { rerender } = render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <ChangeIntelligence />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('REVIEW REQUIRED')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: /run demo scenario/i })).toBeInTheDocument()
+
+    // Switch to a real imported GitHub project with no analyses yet
+    mockCurrentProject = {
+      id: 'p2',
+      name: 'full-stack-fastapi-template',
+      source_type: 'github',
+      latest_run_id: 'r2',
+      ast_repository: { owner: 'fastapi', repo: 'full-stack-fastapi-template', branch: 'master' },
+    }
+    api.listChangeAnalyses.mockResolvedValue([])
+
+    rerender(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <ChangeIntelligence />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('No Change Analysis Run Yet')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('REVIEW REQUIRED')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /run demo scenario/i })).not.toBeInTheDocument()
+  })
+
+  it('ignores stale out-of-order responses from a previously selected project', async () => {
+    let resolveP1
+    api.listChangeAnalyses.mockImplementation((pid) => {
+      if (pid === 'p1') return new Promise((resolve) => { resolveP1 = resolve })
+      return Promise.resolve([])
+    })
+
+    const { rerender } = render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <ChangeIntelligence />
+      </MemoryRouter>,
+    )
+
+    // Switch to p2 BEFORE p1 finishes loading
+    mockCurrentProject = { id: 'p2', name: 'full-stack-fastapi-template', source_type: 'github', latest_run_id: 'r2' }
+    rerender(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <ChangeIntelligence />
+      </MemoryRouter>,
+    )
+
+    // Now resolve the stale p1 request
+    resolveP1([MOCK_ANALYSIS])
+
+    await waitFor(() => {
+      expect(screen.getByText('No Change Analysis Run Yet')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('REVIEW REQUIRED')).not.toBeInTheDocument()
+  })
+
+  it('renders an incomplete error state when an analysis has status failed', async () => {
+    api.listChangeAnalyses.mockResolvedValue([
+      { ...MOCK_ANALYSIS, id: 'ca_fail', status: 'failed', error: 'Diff parsing failed.' },
+    ])
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <ChangeIntelligence />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText(/change analysis incomplete/i)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/diff parsing failed/i)).toBeInTheDocument()
   })
 })

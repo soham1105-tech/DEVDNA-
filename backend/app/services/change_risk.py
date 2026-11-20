@@ -83,7 +83,10 @@ def calculate_change_risk(
     # 4. Test Coverage Gap Factor (Weight: 0.15)
     # Compares associated tests with affected components
     test_count = len(tests)
-    if total_affected > 0 and test_count == 0:
+    if total_affected == 0:
+        coverage_score = 10.0
+        coverage_reason = "No components in the analysed graph were affected by the specified files."
+    elif total_affected > 0 and test_count == 0:
         coverage_score = 95.0
         coverage_reason = "Zero covering tests identified for any affected components (severe blind spot)."
     elif test_count < (total_affected / 2):
@@ -95,18 +98,18 @@ def calculate_change_risk(
     coverage_score = round(min(100.0, max(0.0, coverage_score)), 1)
 
     # 5. Finding Severity Factor (Weight: 0.10)
-    # Severity of static findings in affected components
+    # Severity of static findings specifically touching changed/affected components
     high_findings = [f for f in findings if f.get("severity") == "high"]
     med_findings = [f for f in findings if f.get("severity") == "medium"]
     if high_findings:
         finding_score = min(100.0, 75.0 + len(high_findings) * 10.0)
-        finding_reason = f"{len(high_findings)} high-severity finding(s) in affected files ({high_findings[0].get('title', '')[:50]})."
+        finding_reason = f"{len(high_findings)} high-severity change-specific finding(s) in affected code ({high_findings[0].get('title', '')[:50]})."
     elif med_findings:
         finding_score = min(60.0, 30.0 + len(med_findings) * 8.0)
-        finding_reason = f"{len(med_findings)} medium-severity finding(s) in affected code."
+        finding_reason = f"{len(med_findings)} medium-severity change-specific finding(s) in affected code."
     else:
         finding_score = 10.0
-        finding_reason = "No high or medium severity findings touching changed components."
+        finding_reason = "No high or medium severity findings touching changed or affected components."
     finding_score = round(min(100.0, max(0.0, finding_score)), 1)
 
     # 6. Historical Reliability Memory Factor (Weight: 0.10)
@@ -166,7 +169,9 @@ def calculate_change_risk(
     final_score = int(round(total_weighted))
     final_score = min(100, max(0, final_score))
 
-    if final_score >= 70:
+    if final_score >= 85:
+        level = "critical"
+    elif final_score >= 70:
         level = "high"
     elif final_score >= 40:
         level = "medium"
@@ -176,6 +181,8 @@ def calculate_change_risk(
     return {
         "score": final_score,
         "level": level,
+        "scale": "0-100",
+        "formula": "weighted sum: 25% blast radius + 20% criticality + 20% route exposure + 15% test gap + 10% change-specific findings + 10% reliability history",
         "factors": factors,
         "uncertainty": {
             "score": uncertain_score,
