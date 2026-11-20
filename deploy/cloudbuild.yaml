@@ -1,0 +1,141 @@
+# Google Cloud Build pipeline for DevDNA
+# Triggered on push to main or manually via:
+#   gcloud builds submit --config deploy/cloudbuild.yaml --substitutions=_REGION=us-central1,_AR_REPO=devdna,_CLOUD_SQL_INSTANCE=PROJECT:REGION:INSTANCE
+#
+# Tests run BEFORE images are built or deployed.
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: devdna
+  _BACKEND_SERVICE: devdna-backend
+  _AST_SERVICE: devdna-ast-engine
+  _CLOUD_SQL_INSTANCE: ""
+  _GCS_BUCKET: ""
+  _CORS_ORIGINS: ""
+  _SERVICE_ACCOUNT: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+steps:
+  # 1. Backend unit & integration tests
+  - id: test-backend
+    name: python:3.11-slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        pip install --no-cache-dir -r backend/requirements.lock
+        cd backend && python -m pytest -q
+
+  # 2. AST engine tests
+  - id: test-ast-engine
+    name: python:3.11-slim
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        pip install --no-cache-dir -r ast-engine/requirements.txt pytest
+        cd ast-engine && python -m pytest -q
+
+  # 3. Frontend tests & production bundle
+  - id: test-frontend
+    name: node:20-alpine
+    entrypoint: sh
+    args:
+      - -ceu
+      - |
+        cd frontend
+        npm ci
+        npm test -- --run
+        VITE_AST_ENGINE_URL=/ast npm run build
+
+  # 4. Build & push backend container image
+  - id: build-backend
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["test-backend"]
+    args:
+      - build
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/devdna-backend:${SHORT_SHA}"
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/devdna-backend:latest"
+      - ./backend
+
+  - id: push-backend
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["build-backend"]
+    args:
+      - push
+      - --all-tags
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/devdna-backend"
+
+  # 5. Build & push AST engine container image
+  - id: build-ast-engine
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["test-ast-engine"]
+    args:
+      - build
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/devdna-ast-engine:${SHORT_SHA}"
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/devdna-ast-engine:latest"
+      - ./ast-engine
+
+  - id: push-ast-engine
+    name: gcr.io/cloud-builders/docker
+    waitFor: ["build-ast-engine"]
+    args:
+      - push
+      - --all-tags
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/devdna-ast-engine"
+
+  # 6. Deploy backend to Cloud Run (fail-closed: experiments disabled inside API container)
+  - id: deploy-backend
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    waitFor: ["push-backend"]
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "${_BACKEND_SERVICE}"
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/devdna-backend:${SHORT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --service-account=${_SERVICE_ACCOUNT}
+      - --add-cloudsql-instances=${_CLOUD_SQL_INSTANCE}
+      - --min-instances=0
+      - --max-instances=4
+      - --cpu=1
+      - --memory=1Gi
+      - --timeout=300
+      - --concurrency=20
+      - --set-env-vars=DEVDNA_EXPERIMENTS_ENABLED=false,DEVDNA_CORS_ORIGINS=${_CORS_ORIGINS},DEVDNA_GCS_BUCKET=${_GCS_BUCKET},DEVDNA_RATE_LIMIT_PER_MINUTE=120
+      - --set-secrets=DEVDNA_API_TOKEN=devdna-api-token:latest,DEVDNA_DATABASE_URL=devdna-database-url:latest,GEMINI_API_KEY=devdna-gemini-api-key:latest
+
+  # 7. Deploy AST engine to Cloud Run
+  - id: deploy-ast-engine
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    waitFor: ["push-ast-engine"]
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "${_AST_SERVICE}"
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/devdna-ast-engine:${SHORT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated
+      - --min-instances=0
+      - --max-instances=2
+      - --cpu=1
+      - --memory=512Mi
+      - --timeout=60
+      - --set-env-vars=AST_ENGINE_CORS_ORIGINS=${_CORS_ORIGINS}
+      - --set-secrets=AST_ENGINE_API_TOKEN=devdna-api-token:latest
+
+images:
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/devdna-backend:${SHORT_SHA}"
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/devdna-ast-engine:${SHORT_SHA}"
