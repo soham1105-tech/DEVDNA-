@@ -24,7 +24,7 @@ def _int(name: str, default: int) -> int:
 @dataclass
 class Settings:
     data_dir: Path = field(default_factory=lambda: Path(os.environ.get("DEVDNA_DATA_DIR", BACKEND_DIR / "data")))
-    database_url: str = field(default_factory=lambda: os.environ.get("DEVDNA_DATABASE_URL", ""))
+    database_url: str = field(default_factory=lambda: os.environ.get("DEVDNA_DATABASE_URL", "").strip())
     sample_project_dir: Path = BACKEND_DIR / "sample_project"
     cors_origins: list[str] = field(
         default_factory=lambda: [

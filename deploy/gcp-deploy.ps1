@@ -48,7 +48,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "==> 5. Ensuring Cloud SQL PostgreSQL ($SqlInstance)"
 gcloud sql instances describe $SqlInstance 2>$null
 if ($LASTEXITCODE -ne 0) {
-    gcloud sql instances create $SqlInstance --database-version=POSTGRES_16 --tier=db-f1-micro --region=$Region --storage-size=10GB --storage-auto-increase --backup-start-time=03:00
+    gcloud sql instances create $SqlInstance --database-version=POSTGRES_16 --edition=ENTERPRISE --tier=db-f1-micro --region=$Region --storage-size=10GB --storage-auto-increase --backup-start-time=03:00
 }
 gcloud sql databases describe $DbName --instance=$SqlInstance 2>$null
 if ($LASTEXITCODE -ne 0) {

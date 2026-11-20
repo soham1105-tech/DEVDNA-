@@ -67,6 +67,7 @@ echo "==> 5. Provisioning Cloud SQL PostgreSQL (${SQL_INSTANCE}, db-f1-micro)"
 if ! gcloud sql instances describe "${SQL_INSTANCE}" >/dev/null 2>&1; then
   gcloud sql instances create "${SQL_INSTANCE}" \
     --database-version=POSTGRES_16 \
+    --edition=ENTERPRISE \
     --tier=db-f1-micro \
     --region="${REGION}" \
     --storage-size=10GB \
